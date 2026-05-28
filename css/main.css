@@ -433,3 +433,99 @@ input[type="number"] {
 .bottom-fab {
   bottom: calc(70px + env(safe-area-inset-bottom, 0px));
 }
+
+/* ============================================================
+   FIXES COULEURS iOS Dark Mode — select, textarea, input
+   ============================================================ */
+
+/* Select — forcer couleur texte lisible */
+select {
+  color: var(--color-text) !important;
+  background-color: var(--color-bg-card) !important;
+}
+
+select option {
+  color: var(--color-text);
+  background-color: var(--color-bg-card);
+}
+
+/* Textarea — forcer couleur texte */
+textarea {
+  color: var(--color-text) !important;
+  background-color: var(--color-bg-card) !important;
+}
+
+/* Input — forcer couleur texte */
+input[type="text"],
+input[type="tel"],
+input[type="number"],
+input[type="date"],
+input[type="time"] {
+  color: var(--color-text) !important;
+  background-color: var(--color-bg-card) !important;
+}
+
+/* Placeholder — couleur correcte */
+::placeholder {
+  color: var(--color-text-hint) !important;
+  opacity: 1;
+}
+
+/* Fix spécifique iOS dark mode */
+@media (prefers-color-scheme: dark) {
+  select,
+  textarea,
+  input[type="text"],
+  input[type="tel"],
+  input[type="number"],
+  input[type="date"],
+  input[type="time"] {
+    color: #e8e6de !important;
+    background-color: #2c2c2a !important;
+    border-color: rgba(255,255,255,.2) !important;
+    -webkit-text-fill-color: #e8e6de;
+  }
+
+  select option {
+    background-color: #2c2c2a;
+    color: #e8e6de;
+  }
+
+  /* Fix iOS autofill dark mode */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus {
+    -webkit-text-fill-color: #e8e6de !important;
+    -webkit-box-shadow: 0 0 0px 1000px #2c2c2a inset !important;
+  }
+}
+
+/* Light mode — fix aussi */
+@media (prefers-color-scheme: light) {
+  select,
+  textarea,
+  input[type="text"],
+  input[type="tel"],
+  input[type="number"],
+  input[type="date"],
+  input[type="time"] {
+    color: #1a1a18 !important;
+    background-color: #ffffff !important;
+    -webkit-text-fill-color: #1a1a18;
+  }
+
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus {
+    -webkit-text-fill-color: #1a1a18 !important;
+    -webkit-box-shadow: 0 0 0px 1000px #ffffff inset !important;
+  }
+}
+
+/* Notes dans _buildProfilTab — lisibilité */
+.notes-text {
+  font-size: 15px !important;
+  color: var(--color-text) !important;
+  line-height: 1.6;
+  -webkit-text-fill-color: var(--color-text);
+}
