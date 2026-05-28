@@ -285,7 +285,7 @@ function renderDashboard() {
 }
 
 function openPatient(id){ _currentPatientId=id; Router.go('patient-detail'); }
-function _age(d){ return Math.floor((Date.now()-new Date(d))/(365.25*24*3600*1000)); }
+// _age() définie en bas du fichier
 
 // ============================================================
 // LISTE PATIENTS
@@ -1252,12 +1252,12 @@ function _buildProfilTab(p) {
       (p.dateNaissance ?
         '<div class="row" style="min-height:40px">' +
           '<i class="ti ti-calendar" style="font-size:18px;color:#185FA5;flex-shrink:0" aria-hidden="true"></i>' +
-          '<div style="flex:1"><div style="font-size:13px;color:var(--color-text-muted)">Date de naissance</div><div style="font-weight:500">'+new Date(p.dateNaissance).toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'})+' ('+_age(p.dateNaissance)+' ans)</div></div>' +
+          '<div style="flex:1"><div style="font-size:13px;color:var(--color-text-muted)">Date de naissance</div><div style="font-weight:500">'+_formatDate(p.dateNaissance)+' ('+_age(p.dateNaissance)+' ans)</div></div>' +
         '</div>' : '') +
       (p.notes ?
         '<div class="row" style="min-height:40px;align-items:flex-start">' +
           '<i class="ti ti-notes" style="font-size:18px;color:#185FA5;flex-shrink:0;margin-top:2px" aria-hidden="true"></i>' +
-          '<div style="flex:1"><div style="font-size:13px;color:var(--color-text-muted)">Notes</div><div style="font-weight:400;font-style:italic">'+p.notes+'</div></div>' +
+          '<div style="flex:1"><div style="font-size:13px;color:var(--color-text-muted)">Notes</div><div style="font-size:14px;color:var(--color-text);line-height:1.6;margin-top:2px">'+p.notes+'</div></div>' +
         '</div>' : '') +
     '</div>' +
 
@@ -1274,4 +1274,28 @@ function _buildProfilTab(p) {
     '</div>' +
 
   '</div>';
+}
+
+// ============================================================
+// UTILITAIRES
+// ============================================================
+
+// Fix timezone iOS — parse la date sans décalage UTC
+function _formatDate(dateStr) {
+  if (!dateStr) return '';
+  var parts = dateStr.split('-');
+  var d = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]));
+  return d.toLocaleDateString('fr-FR', { day:'numeric', month:'long', year:'numeric' });
+}
+
+// Fix age iOS — même problème timezone
+function _age(dateStr) {
+  if (!dateStr) return 0;
+  var parts  = dateStr.split('-');
+  var birth  = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]));
+  var today  = new Date();
+  var age    = today.getFullYear() - birth.getFullYear();
+  var m      = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return age;
 }
