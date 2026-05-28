@@ -435,7 +435,7 @@ function renderAddPatient() {
       '</div>'+
       '<div class="card stack-sm">'+
         '<p class="section-title">Notes (allergies, pathologies...)</p>'+
-        '<textarea id="p-notes" placeholder="ex : Diabétique, allergie pénicilline" style="min-height:90px;padding:12px;resize:none;border:1.5px solid var(--color-border-strong);border-radius:12px;font-family:inherit;font-size:15px;background:#fff;color:var(--color-text);line-height:1.5"></textarea>'+
+        '<textarea id="p-notes" placeholder="ex : Diabétique, allergie pénicilline" style="min-height:90px;padding:12px;resize:none;border:1.5px solid var(--color-border-strong);border-radius:12px;font-family:inherit;font-size:16px;line-height:1.5;width:100%"></textarea>'+
       '</div>'+
       '<button class="btn btn-primary" onclick="savePatient()">Enregistrer le patient</button>'+
     '</div>';
@@ -1257,7 +1257,7 @@ function _buildProfilTab(p) {
       (p.notes ?
         '<div class="row" style="min-height:40px;align-items:flex-start">' +
           '<i class="ti ti-notes" style="font-size:18px;color:#185FA5;flex-shrink:0;margin-top:2px" aria-hidden="true"></i>' +
-          '<div style="flex:1"><div style="font-size:13px;color:var(--color-text-muted)">Notes</div><div style="font-size:14px;color:var(--color-text);line-height:1.6;margin-top:2px">'+p.notes+'</div></div>' +
+          '<div style="flex:1"><div style="font-size:13px;color:var(--color-text-muted)">Notes</div><div class="notes-text" style="margin-top:4px">'+p.notes+'</div></div>' +
         '</div>' : '') +
     '</div>' +
 
@@ -1289,7 +1289,7 @@ function _buildDateSelects(idPrefix, currentDate) {
     curDay   = parts[2] || '';
   }
 
-  var selectStyle = 'flex:1;min-height:48px;padding:0 8px;border:1.5px solid var(--color-border-strong);border-radius:12px;font-size:16px;background:#fff;color:var(--color-text);-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'8\' viewBox=\'0 0 12 8\'%3E%3Cpath d=\'M1 1l5 5 5-5\' stroke=\'%23888\' fill=\'none\' stroke-width=\'1.5\' stroke-linecap=\'round\'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px';
+  var selectStyle = 'flex:1;min-height:48px;padding:0 8px;border:1.5px solid var(--color-border-strong);border-radius:12px;font-size:16px;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'8\' viewBox=\'0 0 12 8\'%3E%3Cpath d=\'M1 1l5 5 5-5\' stroke=\'%23888\' fill=\'none\' stroke-width=\'1.5\' stroke-linecap=\'round\'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px';
 
   // Jours 1-31
   var days = '<option value="">Jour</option>';
