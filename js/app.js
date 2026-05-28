@@ -431,7 +431,7 @@ function renderAddPatient() {
       '<div class="card stack-sm">'+
         '<div class="stack-sm"><p class="section-title">Pr&eacute;nom *</p><input type="text" id="p-prenom" placeholder="ex : Marcel"></div>'+
         '<div class="stack-sm"><p class="section-title">Nom *</p><input type="text" id="p-nom" placeholder="ex : Dupont"></div>'+
-        '<div class="stack-sm"><p class="section-title">Date de naissance</p><input type="date" id="p-dob"></div>'+
+        '<div class="stack-sm"><p class="section-title">Date de naissance</p>'+_buildDateSelects('p-dob', '')+'</div>'+
       '</div>'+
       '<div class="card stack-sm">'+
         '<p class="section-title">Notes (allergies, pathologies...)</p>'+
@@ -706,7 +706,7 @@ function renderEditPatient() {
       '<div class="card stack-sm">' +
         '<div class="stack-sm"><p class="section-title">Pr&eacute;nom *</p><input type="text" id="p-prenom" value="'+p.prenom+'" placeholder="ex : Marcel"></div>' +
         '<div class="stack-sm"><p class="section-title">Nom *</p><input type="text" id="p-nom" value="'+p.nom+'" placeholder="ex : Dupont"></div>' +
-        '<div class="stack-sm"><p class="section-title">Date de naissance</p><input type="date" id="p-dob" value="'+(p.dateNaissance||'')+'"></div>' +
+        '<div class="stack-sm"><p class="section-title">Date de naissance</p>'+_buildDateSelects('p-dob', p.dateNaissance||'')+'</div>' +
       '</div>' +
 
       '<div class="card stack-sm">' +
@@ -734,7 +734,7 @@ function renderEditPatient() {
 function saveEditPatient() {
   var prenom = document.getElementById('p-prenom').value.trim();
   var nom    = document.getElementById('p-nom').value.trim();
-  var dob    = document.getElementById('p-dob').value;
+  var dob    = _getDateFromSelects('p-dob');
   var notes  = document.getElementById('p-notes').value.trim();
   var photo  = document.getElementById('pat-photo').dataset.photo || null;
 
@@ -1274,6 +1274,58 @@ function _buildProfilTab(p) {
     '</div>' +
 
   '</div>';
+}
+
+
+// ============================================================
+// HELPER — sélecteur date naissance (3 selects — évite iOS calendar)
+// ============================================================
+function _buildDateSelects(idPrefix, currentDate) {
+  var curDay='', curMonth='', curYear='';
+  if (currentDate) {
+    var parts = currentDate.split('-');
+    curYear  = parts[0] || '';
+    curMonth = parts[1] || '';
+    curDay   = parts[2] || '';
+  }
+
+  var selectStyle = 'flex:1;min-height:48px;padding:0 8px;border:1.5px solid var(--color-border-strong);border-radius:12px;font-size:16px;background:#fff;color:var(--color-text);-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'8\' viewBox=\'0 0 12 8\'%3E%3Cpath d=\'M1 1l5 5 5-5\' stroke=\'%23888\' fill=\'none\' stroke-width=\'1.5\' stroke-linecap=\'round\'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px';
+
+  // Jours 1-31
+  var days = '<option value="">Jour</option>';
+  for (var d=1; d<=31; d++) {
+    var v = d < 10 ? '0'+d : ''+d;
+    days += '<option value="'+v+'"'+(curDay===v?' selected':'')+'>'+d+'</option>';
+  }
+
+  // Mois
+  var MOIS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+  var months = '<option value="">Mois</option>';
+  MOIS.forEach(function(m, i) {
+    var v = i < 9 ? '0'+(i+1) : ''+(i+1);
+    months += '<option value="'+v+'"'+(curMonth===v?' selected':'')+'>'+m+'</option>';
+  });
+
+  // Années — de 1920 à aujourd'hui
+  var thisYear = new Date().getFullYear();
+  var years = '<option value="">Année</option>';
+  for (var y=thisYear; y>=1920; y--) {
+    years += '<option value="'+y+'"'+(curYear===(''+y)?' selected':'')+'>'+y+'</option>';
+  }
+
+  return '<div style="display:flex;gap:8px">' +
+    '<select id="'+idPrefix+'-day"   style="'+selectStyle+'">'+days+'</select>' +
+    '<select id="'+idPrefix+'-month" style="'+selectStyle+'">'+months+'</select>' +
+    '<select id="'+idPrefix+'-year"  style="'+selectStyle+'">'+years+'</select>' +
+  '</div>';
+}
+
+function _getDateFromSelects(idPrefix) {
+  var day   = document.getElementById(idPrefix+'-day').value;
+  var month = document.getElementById(idPrefix+'-month').value;
+  var year  = document.getElementById(idPrefix+'-year').value;
+  if (!day || !month || !year) return null;
+  return year+'-'+month+'-'+day;
 }
 
 // ============================================================
