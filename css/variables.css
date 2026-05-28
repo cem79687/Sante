@@ -1,0 +1,97 @@
+/* ============================================================
+   variables.css — design tokens de MediSafe
+   Modifier ici pour changer toute l'identité visuelle de l'app
+   ============================================================ */
+
+:root {
+
+  /* --- Couleurs de statut médicament --- */
+  --color-taken:         #3B6D11;   /* vert  — médicament pris */
+  --color-taken-bg:      #EAF3DE;
+  --color-pending:       #854F0B;   /* orange — à prendre */
+  --color-pending-bg:    #FAEEDA;
+  --color-missed:        #A32D2D;   /* rouge  — oubli */
+  --color-missed-bg:     #FCEBEB;
+
+  /* --- Couleurs principales --- */
+  --color-primary:       #185FA5;
+  --color-primary-bg:    #E6F1FB;
+  --color-primary-dark:  #0C447C;
+
+  /* --- Neutres --- */
+  --color-text:          #1a1a18;
+  --color-text-muted:    #5F5E5A;
+  --color-text-hint:     #888780;
+  --color-bg:            #ffffff;
+  --color-bg-surface:    #F1EFE8;
+  --color-bg-card:       #ffffff;
+  --color-border:        rgba(0,0,0,0.12);
+  --color-border-strong: rgba(0,0,0,0.25);
+
+  /* --- Danger / alerte --- */
+  --color-danger:        #A32D2D;
+  --color-danger-bg:     #FCEBEB;
+  --color-danger-border: rgba(163,45,45,0.3);
+
+  /* --- Typographie --- */
+  --font-family:         -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-size-xs:        13px;
+  --font-size-sm:        15px;
+  --font-size-base:      17px;   /* taille de base — volontairement grande */
+  --font-size-lg:        20px;
+  --font-size-xl:        24px;
+  --font-size-2xl:       30px;
+  --font-weight-normal:  400;
+  --font-weight-medium:  500;
+  --line-height:         1.5;
+
+  /* --- Espacements --- */
+  --space-xs:   4px;
+  --space-sm:   8px;
+  --space-md:   16px;
+  --space-lg:   24px;
+  --space-xl:   32px;
+
+  /* --- Bordures --- */
+  --radius-sm:  8px;
+  --radius-md:  12px;
+  --radius-lg:  16px;
+  --radius-xl:  24px;
+  --radius-pill: 999px;
+
+  /* --- Ombres légères --- */
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.08);
+
+  /* --- Tailles tactiles seniors (minimum recommandé : 48px) --- */
+  --tap-min:    60px;   /* hauteur minimale de tout élément tappable */
+  --tap-icon:   48px;
+}
+
+/* --- Dark mode --- */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-taken:         #9FE1CB;
+    --color-taken-bg:      #085041;
+    --color-pending:       #FAC775;
+    --color-pending-bg:    #633806;
+    --color-missed:        #F7C1C1;
+    --color-missed-bg:     #791F1F;
+
+    --color-primary:       #85B7EB;
+    --color-primary-bg:    #0C447C;
+    --color-primary-dark:  #B5D4F4;
+
+    --color-text:          #e8e6de;
+    --color-text-muted:    #B4B2A9;
+    --color-text-hint:     #888780;
+    --color-bg:            #1c1c1a;
+    --color-bg-surface:    #2c2c2a;
+    --color-bg-card:       #242422;
+    --color-border:        rgba(255,255,255,0.1);
+    --color-border-strong: rgba(255,255,255,0.2);
+
+    --color-danger:        #F7C1C1;
+    --color-danger-bg:     #791F1F;
+    --color-danger-border: rgba(247,193,193,0.3);
+  }
+}
