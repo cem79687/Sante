@@ -495,17 +495,19 @@ function handlePatPhoto(input){
 }
 
 function savePatient(){
-  var prenom=document.getElementById('p-prenom').value.trim();
-  var nom=document.getElementById('p-nom').value.trim();
-  var dob=document.getElementById('p-dob').value;
-  var notes=document.getElementById('p-notes').value.trim();
-  var photo=document.getElementById('pat-photo').dataset.photo||null;
-  if(!prenom){showToast('Merci de saisir le prénom.', 'warning');return;}
-  if(!nom){showToast('Merci de saisir le nom.', 'warning');return;}
-  try{
-    var p=PatientService.addPatient({nom:nom,prenom:prenom,dateNaissance:dob||null,photo:photo,notes:notes});
-    _currentPatientId=p.id; showToast('Patient ajouté avec succès', 'success'); Router.go('patient-detail');
-  }catch(e){showToast('Erreur : ' + e.message, 'error');}
+  var prenom = document.getElementById('p-prenom').value.trim();
+  var nom    = document.getElementById('p-nom').value.trim();
+  var dob    = _getDateFromSelects('p-dob');
+  var notes  = document.getElementById('p-notes').value.trim();
+  var photo  = document.getElementById('pat-photo').dataset.photo || null;
+  if (!prenom) { showToast('Merci de saisir le prénom.', 'warning'); return; }
+  if (!nom)    { showToast('Merci de saisir le nom.', 'warning'); return; }
+  try {
+    var p = PatientService.addPatient({ nom:nom, prenom:prenom, dateNaissance:dob||null, photo:photo, notes:notes });
+    _currentPatientId = p.id;
+    showToast('Patient ajouté avec succès', 'success');
+    Router.go('patient-detail');
+  } catch(e) { showToast('Erreur : ' + e.message, 'error'); }
 }
 
 // ============================================================
