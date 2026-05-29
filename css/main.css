@@ -529,3 +529,77 @@ input[type="time"] {
   line-height: 1.6;
   -webkit-text-fill-color: var(--color-text);
 }
+
+/* ============================================================
+   TOASTS — notifications légères
+   ============================================================ */
+.toast-container {
+  position: fixed;
+  bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 32px);
+  max-width: 398px;
+  z-index: 9000;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 500;
+  width: 100%;
+  pointer-events: auto;
+  animation: toastIn .3s cubic-bezier(.34,1.56,.64,1) both;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.toast.hiding {
+  animation: toastOut .25s ease forwards;
+}
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(16px) scale(.95); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes toastOut {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to   { opacity: 0; transform: translateY(8px) scale(.96); }
+}
+
+.toast-success {
+  background: rgba(234,243,222,.97);
+  color: #27500A;
+  border: 1px solid rgba(59,109,17,.2);
+}
+
+.toast-warning {
+  background: rgba(250,238,218,.97);
+  color: #633806;
+  border: 1px solid rgba(133,79,11,.2);
+}
+
+.toast-error {
+  background: rgba(252,235,235,.97);
+  color: #791F1F;
+  border: 1px solid rgba(163,45,45,.2);
+}
+
+@media (prefers-color-scheme: dark) {
+  .toast-success { background: rgba(39,80,10,.95);  color: #C0DD97; border-color: rgba(192,221,151,.2); }
+  .toast-warning { background: rgba(99,56,6,.95);   color: #FAC775; border-color: rgba(250,199,117,.2); }
+  .toast-error   { background: rgba(121,31,31,.95); color: #F7C1C1; border-color: rgba(247,193,193,.2); }
+}
+
+.toast-icon { font-size: 18px; flex-shrink: 0; }
+.toast-msg  { flex: 1; line-height: 1.4; }
