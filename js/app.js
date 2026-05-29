@@ -27,6 +27,48 @@ function initApp() {
 }
 
 // ============================================================
+// TOASTS — remplace les alert() natifs
+// ============================================================
+var _toastTimer = null;
+
+function showToast(msg, type) {
+  // type: 'success' | 'warning' | 'error'
+  type = type || 'success';
+
+  // Créer le container s'il n'existe pas
+  var container = document.getElementById('toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toast-container';
+    container.className = 'toast-container';
+    document.body.appendChild(container);
+  }
+
+  // Supprimer toast précédent immédiatement
+  var existing = container.querySelector('.toast');
+  if (existing) { existing.remove(); }
+  if (_toastTimer) { clearTimeout(_toastTimer); _toastTimer = null; }
+
+  var icons = { success:'ti-circle-check', warning:'ti-alert-triangle', error:'ti-circle-x' };
+  var icon  = icons[type] || icons.success;
+
+  var toast = document.createElement('div');
+  toast.className = 'toast toast-' + type;
+  toast.innerHTML =
+    '<i class="ti '+icon+' toast-icon" aria-hidden="true"></i>' +
+    '<span class="toast-msg">'+msg+'</span>';
+
+  container.appendChild(toast);
+
+  // Auto-dismiss après 3s
+  _toastTimer = setTimeout(function() {
+    toast.classList.add('hiding');
+    setTimeout(function() { if (toast.parentNode) toast.remove(); }, 280);
+  }, 3000);
+}
+
+
+// ============================================================
 // SPLASH
 // ============================================================
 function renderSplash() {
@@ -458,12 +500,12 @@ function savePatient(){
   var dob=document.getElementById('p-dob').value;
   var notes=document.getElementById('p-notes').value.trim();
   var photo=document.getElementById('pat-photo').dataset.photo||null;
-  if(!prenom){alert('Merci de saisir le prénom.');return;}
-  if(!nom){alert('Merci de saisir le nom.');return;}
+  if(!prenom){showToast('Merci de saisir le prénom.', 'warning');return;}
+  if(!nom){showToast('Merci de saisir le nom.', 'warning');return;}
   try{
     var p=PatientService.addPatient({nom:nom,prenom:prenom,dateNaissance:dob||null,photo:photo,notes:notes});
-    _currentPatientId=p.id; Router.go('patient-detail');
-  }catch(e){alert('Erreur : '+e.message);}
+    _currentPatientId=p.id; showToast('Patient ajouté avec succès', 'success'); Router.go('patient-detail');
+  }catch(e){showToast('Erreur : ' + e.message, 'error');}
 }
 
 // ============================================================
@@ -564,18 +606,17 @@ function saveMed(){
   if(durType==='limited'){
     var days=parseInt(document.getElementById('dur-days').value);
     var start=document.getElementById('dur-start').value;
-    if(!days||days<1){alert('Merci de saisir le nombre de jours.');return;}
-    if(!start){alert('Merci de saisir la date de début.');return;}
+    if(!days||days<1){showToast('Merci de saisir le nombre de jours.', 'warning');return;}
+    if(!start){showToast('Merci de saisir la date de début.', 'warning');return;}
     duration={days:days,startDate:start};
   }
-  if(!name){alert('Merci de saisir le nom.');return;}
-  if(!dose){alert('Merci de saisir la dose.');return;}
-  if(!slots.length){alert("Merci d'ajouter au moins un horaire.");return;}
+  if(!name){showToast('Merci de saisir le nom.', 'warning');return;}
+  if(!dose){showToast('Merci de saisir la dose.', 'warning');return;}
+  if(!slots.length){showToast("Merci d'ajouter au moins un horaire.", 'warning');return;}
   try{
     PatientService.addMedication(_currentPatientId,{name:name,dose:dose,schedule:slots,photo:photo,duration:duration});
-    _patientTab = 'today';
-    Router.go('patient-detail');
-  }catch(e){alert('Erreur : '+e.message);}
+    _patientTab = 'today'; showToast('Médicament ajouté', 'success'); Router.go('patient-detail');
+  }catch(e){showToast('Erreur : ' + e.message, 'error');}
 }
 
 // ============================================================
@@ -738,8 +779,8 @@ function saveEditPatient() {
   var notes  = document.getElementById('p-notes').value.trim();
   var photo  = document.getElementById('pat-photo').dataset.photo || null;
 
-  if (!prenom) { alert('Merci de saisir le prénom.'); return; }
-  if (!nom)    { alert('Merci de saisir le nom.'); return; }
+  if (!prenom) { showToast('Merci de saisir le prénom.', 'warning'); return; }
+  if (!nom)    { showToast('Merci de saisir le nom.', 'warning'); return; }
 
   try {
     PatientService.updatePatient(_currentPatientId, {
@@ -748,9 +789,8 @@ function saveEditPatient() {
       notes: notes,
       photo: photo || null
     });
-    _patientTab = 'profil';
-    Router.go('patient-detail');
-  } catch(e) { alert('Erreur : ' + e.message); }
+    _patientTab = 'profil'; showToast('Profil mis à jour', 'success'); Router.go('patient-detail');
+  } catch(e) { showToast('Erreur : ' + e.message, 'error'); }
 }
 
 function confirmDeletePatient() {
@@ -776,8 +816,7 @@ function editMedication(medId) {
 function confirmDeleteMed(medId, medName) {
   if (confirm('Supprimer ' + medName + ' ? L\'historique des prises sera conservé.')) {
     PatientService.deleteMedication(_currentPatientId, medId);
-    _patientTab = 'today';
-    Router.go('patient-detail');
+    _patientTab = 'today'; showToast('Médicament ajouté', 'success'); Router.go('patient-detail');
   }
 }
 
@@ -886,14 +925,14 @@ function saveEditMedication() {
   if (durType === 'limited') {
     var days  = parseInt(document.getElementById('dur-days').value);
     var start = document.getElementById('dur-start').value;
-    if (!days || days < 1) { alert('Merci de saisir le nombre de jours.'); return; }
-    if (!start)             { alert('Merci de saisir la date de début.'); return; }
+    if (!days || days < 1) { showToast('Merci de saisir le nombre de jours.', 'warning'); return; }
+    if (!start)             { showToast('Merci de saisir la date de début.', 'warning'); return; }
     duration = { days: days, startDate: start };
   }
 
-  if (!name)         { alert('Merci de saisir le nom.'); return; }
-  if (!dose)         { alert('Merci de saisir la dose.'); return; }
-  if (!slots.length) { alert("Merci d'ajouter au moins un horaire."); return; }
+  if (!name)         { showToast('Merci de saisir le nom.', 'warning'); return; }
+  if (!dose)         { showToast('Merci de saisir la dose.', 'warning'); return; }
+  if (!slots.length) { showToast("Merci d'ajouter au moins un horaire.", 'warning'); return; }
 
   try {
     PatientService.updateMedication(_currentPatientId, _editMedId, {
@@ -901,7 +940,7 @@ function saveEditMedication() {
       photo: photo || null, duration: duration
     });
     Router.go('patient-detail');
-  } catch(e) { alert('Erreur : ' + e.message); }
+  } catch(e) { showToast('Erreur : ' + e.message, 'error'); }
 }
 
 // ============================================================
@@ -978,16 +1017,15 @@ function saveOrdonnance() {
   var notes   = document.getElementById('ordo-notes').value.trim();
   var photo   = document.getElementById('ordo-photo-preview').dataset.photo || null;
 
-  if (!medecin) { alert('Merci de saisir le nom du médecin.'); return; }
-  if (!date)    { alert('Merci de saisir la date d\'expiration.'); return; }
+  if (!medecin) { showToast('Merci de saisir le nom du médecin.', 'warning'); return; }
+  if (!date)    { showToast('Merci de saisir la date d\'expiration.', 'warning'); return; }
 
   try {
     PatientService.addOrdonnance(_currentPatientId, {
       medecin: medecin, dateExpiration: date, photo: photo, notes: notes
     });
-    _patientTab = 'ordonnances';
-    Router.go('patient-detail');
-  } catch(e) { alert('Erreur : ' + e.message); }
+    _patientTab = 'ordonnances'; showToast('Ordonnance enregistrée', 'success'); Router.go('patient-detail');
+  } catch(e) { showToast('Erreur : ' + e.message, 'error'); }
 }
 
 // Supprimer une ordonnance
