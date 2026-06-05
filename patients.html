@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#185FA5" />
+  <meta name="description" content="MediSafe — vos médicaments du jour" />
+
+  <!-- iOS PWA -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="MediSafe" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+
+  <!-- Favicon + manifest -->
+  <link rel="icon" href="icons/favicon.ico" />
+  <link rel="manifest" href="manifest-senior.json" />
+
+  <title>MediSafe</title>
+
+  <!-- Tabler Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css" />
+
+  <link rel="stylesheet" href="css/variables.css" />
+  <link rel="stylesheet" href="css/senior.css" />
+
+  <style>
+    /* Anti-zoom iOS sur les inputs */
+    input, select, textarea { font-size: 16px !important; }
+    button { touch-action: manipulation; -webkit-touch-callout: none; }
+  </style>
+</head>
+<body>
+
+  <div id="app">
+    <div class="splash">
+      <div class="splash-logo">💊</div>
+      <div class="splash-title" style="color:#fff">Chargement...</div>
+    </div>
+  </div>
+
+  <script src="js/services/senior-sync.js"></script>
+  <script src="js/router.js"></script>
+  <script src="js/senior-app.js"></script>
+
+</body>
+</html>

@@ -222,9 +222,17 @@ input:focus, select:focus, textarea:focus { border-color: #185FA5; }
   25%      { transform: translateX(-5px); }
   75%      { transform: translateX(5px); }
 }
-.pin-keypad { display: grid; grid-template-columns: repeat(3, 72px); gap: 14px; margin-top: 20px; }
+.pin-keypad {
+  display: grid;
+  grid-template-columns: repeat(3, clamp(60px, 20vw, 80px));
+  gap: clamp(10px, 3vw, 18px);
+  margin-top: 20px;
+  justify-content: center;
+}
 .pin-key {
-  width: 72px; height: 72px; border-radius: 50%;
+  width: clamp(60px, 20vw, 80px);
+  height: clamp(60px, 20vw, 80px);
+  border-radius: 50%;
   border: 1.5px solid var(--color-border-strong);
   background: #F1EFE8; font-size: 22px; font-weight: 500;
   color: var(--color-text); cursor: pointer;
@@ -603,3 +611,140 @@ input[type="time"] {
 
 .toast-icon { font-size: 18px; flex-shrink: 0; }
 .toast-msg  { flex: 1; line-height: 1.4; }
+
+/* ============================================================
+   RESPONSIVE — Tablette (≥600px) et Desktop (≥900px)
+   ============================================================ */
+
+/* ── Tablette portrait et au-delà ── */
+@media (min-width: 600px) {
+
+  body { background: #e8e5dd; }
+
+  #app {
+    max-width: 860px;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .bottom-nav    { max-width: 860px; }
+  .toast-container { max-width: 600px; }
+
+  .dash-stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+
+  .dash-two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    align-items: start;
+  }
+
+  .patients-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .form-container {
+    max-width: 540px;
+    margin: 0 auto;
+  }
+
+  .pin-card { max-width: 380px; }
+
+  .stat-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .meds-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .page-header {
+    padding-left: 28px;
+    padding-right: 28px;
+  }
+
+  .card { padding: 20px; }
+}
+
+/* ── Dark mode tablette ── */
+@media (min-width: 600px) and (prefers-color-scheme: dark) {
+  body { background: #141412; }
+}
+
+/* ── Desktop (≥900px) ── */
+@media (min-width: 900px) {
+
+  #app          { max-width: 960px; }
+  .bottom-nav   { max-width: 960px; }
+
+  /* Nav horizontale en haut */
+  .bottom-nav {
+    top: 0;
+    bottom: auto;
+    border-top: none;
+    border-bottom: 1px solid rgba(0,0,0,.08);
+    padding: 0 32px;
+    height: 60px;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+  }
+
+  .nav-item {
+    flex: none;
+    flex-direction: row;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    min-height: auto;
+  }
+
+  .nav-item i { font-size: 18px; }
+  .nav-item.active::after { display: none; }
+  .nav-item.active { background: #E6F1FB; border-radius: 8px; }
+
+  /* Décaler contenu sous nav top */
+  #app > *:not(.bottom-nav) { padding-top: 60px; }
+
+  /* Toast bas à droite */
+  .toast-container {
+    left: auto;
+    right: 24px;
+    transform: none;
+    bottom: 24px;
+    max-width: 360px;
+  }
+
+  .patients-grid { grid-template-columns: repeat(3, 1fr); }
+  .meds-grid     { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* ── Dark mode desktop ── */
+@media (min-width: 900px) and (prefers-color-scheme: dark) {
+  .bottom-nav { border-bottom-color: rgba(255,255,255,.08); }
+  .nav-item.active { background: #0C447C; }
+}
+
+/* ── iPhone SE (≤320px) ── */
+@media (max-width: 320px) {
+  .pin-keypad {
+    grid-template-columns: repeat(3, 58px);
+    gap: 8px;
+  }
+  .pin-key {
+    width: 58px;
+    height: 58px;
+    font-size: 18px;
+  }
+  .page-header-left h1 { font-size: 20px; }
+}

@@ -46,12 +46,12 @@ function getMedication(patientId, medId) {
   return p ? p.medications[medId] || null : null;
 }
 
-function addMedication(patientId, { name, dose, schedule, photo=null, duration=null }) {
+function addMedication(patientId, { name, dose, schedule, photo=null, duration=null, stock=null }) {
   if (!name || !dose || !schedule || !schedule.length) throw new Error('Champs obligatoires manquants');
   const data = _load();
   if (!data[patientId]) throw new Error('Patient introuvable');
   const id  = _id();
-  const med = { id, name:name.trim(), dose:dose.trim(), schedule, photo, duration, active:true, createdAt:new Date().toISOString() };
+  const med = { id, name:name.trim(), dose:dose.trim(), schedule, photo, duration, stock, active:true, createdAt:new Date().toISOString() };
   data[patientId].medications[id] = med;
   _save(data);
   return med;
@@ -254,6 +254,69 @@ function getMedHistory7Days(patientId) {
   return { days: days, meds: result, globalRate: globalRate };
 }
 
+
+// Stock — calcul jours restants
+function getStockDays(med) {
+  if (!med.stock || !med.schedule) return null;
+  const prisesParJour = med.schedule.length;
+  return prisesParJour > 0 ? Math.floor(med.stock / prisesParJour) : null;
+}
+
+function updateStock(patientId, medId, stock) {
+  return updateMedication(patientId, medId, { stock: parseInt(stock) || null });
+}
+
+
+// ── CONTACTS D'ALERTE ─────────────────────────────────────
+
+function getContacts(patientId) {
+  const p = getPatient(patientId);
+  return p ? Object.values(p.contacts || {}) : [];
+}
+
+function addContact(patientId, { nom, relation, telephone, niveau='missed' }) {
+  if (!nom || !telephone) throw new Error('Nom et téléphone obligatoires');
+  const data = _load();
+  if (!data[patientId]) throw new Error('Patient introuvable');
+  if (!data[patientId].contacts) data[patientId].contacts = {};
+  const id = _id();
+  const contact = { id, nom:nom.trim(), relation:relation||'', telephone:telephone.trim(), niveau, createdAt:new Date().toISOString() };
+  data[patientId].contacts[id] = contact;
+  _save(data);
+  return contact;
+}
+
+function updateContact(patientId, contactId, fields) {
+  const data = _load();
+  if (!data[patientId]?.contacts?.[contactId]) throw new Error('Contact introuvable');
+  Object.assign(data[patientId].contacts[contactId], fields);
+  _save(data);
+  return data[patientId].contacts[contactId];
+}
+
+function deleteContact(patientId, contactId) {
+  const data = _load();
+  if (!data[patientId]?.contacts) return;
+  delete data[patientId].contacts[contactId];
+  _save(data);
+}
+
+// Stocks faibles — tous patients
+function getLowStocks() {
+  const result = [];
+  getPatients().forEach(function(p) {
+    getMedications(p.id).forEach(function(m) {
+      if (m.stock === null || m.stock === undefined) return;
+      const perDay = m.stockPerDay || m.schedule.length;
+      const daysLeft = perDay > 0 ? Math.floor(m.stock / perDay) : 999;
+      if (daysLeft <= 7) {
+        result.push({ patientId:p.id, patientName:p.prenom+' '+p.nom, medId:m.id, medName:m.name, stock:m.stock, daysLeft });
+      }
+    });
+  });
+  return result.sort((a,b) => a.daysLeft - b.daysLeft);
+}
+
 window.PatientService = {
   getPatients, getPatient, addPatient, updatePatient, deletePatient,
   getMedications, getMedication, addMedication, updateMedication, deleteMedication,
@@ -261,5 +324,7 @@ window.PatientService = {
   _dayProgress, MOMENTS,
   getOrdonnances, getOrdonnance, addOrdonnance, deleteOrdonnance,
   getOrdonnanceStatus, getExpiringOrdonnances,
-  getMedHistory7Days
+  getMedHistory7Days,
+  getContacts, addContact, updateContact, deleteContact,
+  getLowStocks
 };
