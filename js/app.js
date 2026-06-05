@@ -4,6 +4,16 @@ let _currentPatientId = null;
 let _pinBuffer        = '';
 let _patientTab       = 'today'; // today | history | ordonnances | profil
 
+// Synchronisation window ↔ variables locales pour les onclick inline
+Object.defineProperty(window, '_patientTab', {
+  get: function() { return _patientTab; },
+  set: function(v) { _patientTab = v; }
+});
+Object.defineProperty(window, '_currentPatientId', {
+  get: function() { return _currentPatientId; },
+  set: function(v) { _currentPatientId = v; }
+});
+
 function initApp() {
   if (!window.AuthService || !window.PatientService) {
     document.getElementById('app').innerHTML = '<div style="padding:20px;color:red">Erreur chargement services.</div>';
@@ -427,7 +437,7 @@ function renderPatientDetail(tab) {
 
   const chipsHTML = chips.map(function(c) {
     let active = _patientTab === c.id;
-    return '<button onclick="_patientTab=\''+c.id+'\';renderPatientDetail()" '+
+    return '<button data-tab="'+c.id+'" '+
       'style="display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border-radius:99px;border:'+(active?'none':'1px solid var(--color-border-strong)')+';background:'+(active?'#185FA5':'#fff')+';color:'+(active?'#fff':'var(--color-text-muted)')+';font-size:13px;font-weight:'+(active?'500':'400')+';cursor:pointer;white-space:nowrap;font-family:inherit;flex-shrink:0">'+
       c.icon+' '+c.label+
     '</button>';
@@ -460,11 +470,19 @@ function renderPatientDetail(tab) {
         '<div class="stat-card"><div class="stat-num" style="color:#A32D2D">'+s.missed+'</div><div class="stat-label">Manqu&eacute;s</div></div>' +
       '</div>' +
       '<div style="padding:14px 16px 0;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none">' +
-        '<div style="display:flex;gap:8px">'+chipsHTML+'</div>' +
+        '<div id="patient-chips" style="display:flex;gap:8px">'+chipsHTML+'</div>' +
       '</div>' +
-      '<div style="padding:16px">'+tabContent+'</div>' +
+      '<div id="patient-tab-content" style="padding:16px">'+tabContent+'</div>' +
     '</div>' +
     _nav('patients');
+
+  // Listener natif sur les chips — fiable sur mobile Safari/Chrome
+  document.getElementById('patient-chips').addEventListener('click', function(e) {
+    const btn = e.target.closest('[data-tab]');
+    if (!btn) return;
+    _patientTab = btn.getAttribute('data-tab');
+    renderPatientDetail();
+  });
 }
 function handleTap(medId,dt,status){
   if(status==='taken') return;
@@ -534,6 +552,7 @@ let ML={fasting:'🌅',before:'⏱️',during:'🍽️',after:'✅',bedtime:'�
 let MLlabel={fasting:'À jeun',before:'Avant repas',during:'Avec repas',after:'Après repas',bedtime:'Au coucher'};
 
 function renderAddMedication(){
+  if (!_currentPatientId) { showToast('Erreur : aucun patient sélectionné.', 'error'); Router.go('patients'); return; }
   document.getElementById('app').innerHTML=
     '<div style="padding:20px;padding-bottom:40px" class="stack">'+
       '<div class="row">'+
@@ -619,6 +638,7 @@ function handleMedPhoto(input){
 }
 
 function saveMed(){
+  if (!_currentPatientId) { showToast('Erreur : aucun patient sélectionné.', 'error'); Router.go('patients'); return; }
   let name=document.getElementById('m-name').value.trim();
   let dose=document.getElementById('m-dose').value.trim();
   let photo=document.getElementById('photo-preview').dataset.photo||null;
@@ -652,7 +672,7 @@ function renderPlanning(){
   const patients=PatientService.getPatients();
   const today=new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'});
   const MOMENTS=PatientService.MOMENTS;
-  const rowsHTML=patients.map(function(p){
+  let rowsHTML=patients.map(function(p){
     const meds=PatientService.getTodayMeds(p.id);
     const initials=p.prenom[0].toUpperCase()+p.nom[0].toUpperCase();
     let timesHTML=meds.map(function(m){
@@ -686,7 +706,7 @@ function renderPlanning(){
 // ============================================================
 function renderStats(){
   const patients=PatientService.getPatients();
-  const statsHTML=patients.map(function(p){
+  let statsHTML=patients.map(function(p){
     const s=PatientService.getPatientSummary(p.id);
     const rate=s.total>0?Math.round((s.taken/s.total)*100):0;
     const initials=p.prenom[0].toUpperCase()+p.nom[0].toUpperCase();
@@ -1238,7 +1258,7 @@ function _buildTodayTab(patientId) {
     grouped[m.medId].intakes.push(m);
   });
 
-  const medsHTML = Object.values(grouped).map(function(g) {
+  let medsHTML = Object.values(grouped).map(function(g) {
     const prog = PatientService._dayProgress(g.duration);
     let durHTML = '';
     if (prog) {
