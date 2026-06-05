@@ -1642,3 +1642,7 @@ window.resetAll             = resetAll;
 window.addSlot              = addSlot;
 window.selMoment            = selMoment;
 window.viewOrdoPhoto        = viewOrdoPhoto;
+window.handlePatPhoto       = handlePatPhoto;
+window.toggleDur            = toggleDur;
+window.saveMed              = saveMed;
+window.renderPatientDetail  = renderPatientDetail;
