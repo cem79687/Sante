@@ -501,10 +501,22 @@ function renderPatientDetail(tab) {
           '</div>' +
         '</div>' +
       '</div>' +
-      '<div class="stat-row">' +
-        '<div class="stat-card"><div class="stat-num" style="color:#3B6D11">'+s.taken+'</div><div class="stat-label">Pris</div></div>' +
-        '<div class="stat-card"><div class="stat-num" style="color:#185FA5">'+s.pending+'</div><div class="stat-label">&Agrave; venir</div></div>' +
-        '<div class="stat-card"><div class="stat-num" style="color:#A32D2D">'+s.missed+'</div><div class="stat-label">Manqu&eacute;s</div></div>' +
+      '<div id="patient-stats" class="stat-row">' +
+        '<div class="stat-card" data-stat="taken" style="cursor:pointer;transition:transform .15s">' +
+          '<div class="stat-num" style="color:#3B6D11">'+s.taken+'</div>' +
+          '<div class="stat-label">Pris</div>' +
+          '<div style="font-size:10px;color:var(--color-text-muted);margin-top:3px">Voir →</div>' +
+        '</div>' +
+        '<div class="stat-card" data-stat="pending" style="cursor:pointer;transition:transform .15s">' +
+          '<div class="stat-num" style="color:#185FA5">'+s.pending+'</div>' +
+          '<div class="stat-label">&Agrave; venir</div>' +
+          '<div style="font-size:10px;color:var(--color-text-muted);margin-top:3px">'+(s.pending>0?'Voir →':'✓')+'</div>' +
+        '</div>' +
+        '<div class="stat-card" data-stat="missed" style="cursor:pointer;transition:transform .15s">' +
+          '<div class="stat-num" style="color:#A32D2D">'+s.missed+'</div>' +
+          '<div class="stat-label">Manqu&eacute;s</div>' +
+          '<div style="font-size:10px;color:var(--color-text-muted);margin-top:3px">'+(s.missed>0?'Voir →':'✓')+'</div>' +
+        '</div>' +
       '</div>' +
       '<div style="padding:14px 16px 0;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none">' +
         '<div id="patient-chips" style="display:flex;gap:8px">'+chipsHTML+'</div>' +
@@ -520,6 +532,46 @@ function renderPatientDetail(tab) {
     _patientTab = btn.getAttribute('data-tab');
     renderPatientDetail();
   });
+
+  // Listener stat-cards — bascule sur onglet Aujourd'hui + filtre visuel
+  const patientStats = document.getElementById('patient-stats');
+  if (patientStats) {
+    patientStats.addEventListener('click', function(e) {
+      const card = e.target.closest('[data-stat]');
+      if (!card) return;
+      const stat = card.getAttribute('data-stat');
+      _patientTab = 'today';
+      renderPatientDetail();
+      // Scroll et highlight après rendu
+      setTimeout(function() {
+        const content = document.getElementById('patient-tab-content');
+        if (!content) return;
+        if (stat === 'taken') {
+          // Mettre en évidence les chips vertes
+          content.querySelectorAll('.time-chip').forEach(function(c) {
+            if (c.getAttribute('data-status') === 'taken') {
+              c.style.outline = '2px solid #3B6D11';
+              setTimeout(function() { c.style.outline = ''; }, 2000);
+            }
+          });
+        } else if (stat === 'pending') {
+          // Scroll vers première chip pending
+          const first = content.querySelector('[data-status="pending"]');
+          if (first) { first.scrollIntoView({ behavior:'smooth', block:'center' }); first.style.outline='2px solid #185FA5'; setTimeout(function(){first.style.outline='';},2000); }
+        } else if (stat === 'missed') {
+          // Scroll vers première chip manquée
+          const first = content.querySelector('[data-status="missed"]');
+          if (first) { first.scrollIntoView({ behavior:'smooth', block:'center' }); first.style.outline='2px solid #A32D2D'; setTimeout(function(){first.style.outline='';},2000); }
+        }
+      }, 80);
+    });
+
+    // Feedback tactile mobile
+    patientStats.querySelectorAll('[data-stat]').forEach(function(card) {
+      card.addEventListener('touchstart', function() { card.style.transform='scale(.94)'; }, { passive:true });
+      card.addEventListener('touchend',   function() { card.style.transform=''; },          { passive:true });
+    });
+  }
 }
 function handleTap(medId,dt,status){
   if(status==='taken') return;
