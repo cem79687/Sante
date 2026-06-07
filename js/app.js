@@ -302,11 +302,23 @@ function renderDashboard() {
 
       '<div style="padding:12px;display:flex;flex-direction:column;gap:10px">'+
 
-        // Stats 3 colonnes
-        '<div style="display:flex;gap:8px">'+
-          '<div class="stat-card"><div class="stat-num">'+patients.length+'</div><div class="stat-label">Patient'+(patients.length>1?'s':'')+'</div></div>'+
-          '<div class="stat-card"><div class="stat-num" style="color:#A32D2D">'+totalMissed+'</div><div class="stat-label">Manqu&eacute;s</div></div>'+
-          '<div class="stat-card"><div class="stat-num" style="color:'+rateColor+'">'+globalRate+'%</div><div class="stat-label">Suivi global</div></div>'+
+        // Stats 3 colonnes cliquables
+        '<div id="dash-stats" style="display:flex;gap:8px">'+
+          '<div class="stat-card" data-action="patients" style="cursor:pointer;transition:transform .15s,box-shadow .15s">'+
+            '<div class="stat-num">'+patients.length+'</div>'+
+            '<div class="stat-label">Patient'+(patients.length>1?'s':'')+'</div>'+
+            '<div style="font-size:10px;color:var(--color-text-muted);margin-top:4px">Voir tous →</div>'+
+          '</div>'+
+          '<div class="stat-card" data-action="missed" style="cursor:pointer;transition:transform .15s,box-shadow .15s">'+
+            '<div class="stat-num" style="color:#A32D2D">'+totalMissed+'</div>'+
+            '<div class="stat-label">Manqu&eacute;s</div>'+
+            '<div style="font-size:10px;color:var(--color-text-muted);margin-top:4px">'+(totalMissed>0?'Voir les alertes →':'Tout va bien ✓')+'</div>'+
+          '</div>'+
+          '<div class="stat-card" data-action="stats" style="cursor:pointer;transition:transform .15s,box-shadow .15s">'+
+            '<div class="stat-num" style="color:'+rateColor+'">'+globalRate+'%</div>'+
+            '<div class="stat-label">Suivi global</div>'+
+            '<div style="font-size:10px;color:var(--color-text-muted);margin-top:4px">Voir les stats →</div>'+
+          '</div>'+
         '</div>'+
 
         // Alertes
@@ -339,6 +351,31 @@ function renderDashboard() {
       '</div>'+
     '</div>'+
     _nav('dashboard');
+
+  // Listener natif stat-cards — fiable mobile
+  const dashStats = document.getElementById('dash-stats');
+  if (dashStats) {
+    dashStats.addEventListener('click', function(e) {
+      const card = e.target.closest('[data-action]');
+      if (!card) return;
+      const action = card.getAttribute('data-action');
+      if      (action === 'patients') Router.go('patients');
+      else if (action === 'missed')   Router.go('patients'); // scroll vers alertes
+      else if (action === 'stats')    Router.go('stats');
+    });
+
+    // Feedback tactile sur mobile — scale au tap
+    dashStats.querySelectorAll('[data-action]').forEach(function(card) {
+      card.addEventListener('touchstart', function() {
+        card.style.transform = 'scale(.96)';
+        card.style.boxShadow = 'none';
+      }, { passive: true });
+      card.addEventListener('touchend', function() {
+        card.style.transform = '';
+        card.style.boxShadow = '';
+      }, { passive: true });
+    });
+  }
 }
 
 function openPatient(id){ _currentPatientId=id; Router.go('patient-detail'); }
@@ -754,7 +791,9 @@ function renderSettings(){
 
 function resetAll(){
   if(confirm('Supprimer toutes les données ? Action irréversible.')){
-    localStorage.clear(); Router.go('splash');
+    localStorage.clear();
+    localStorage.setItem('medisafe_seeded','1'); // empêche le reseed au redémarrage
+    Router.go('splash');
   }
 }
 
@@ -1348,6 +1387,20 @@ function _buildProfilTab(p) {
         '</div>' : '') +
     '</div>' +
 
+    // ── QR Senior ──────────────────────────────────────────
+    '<div class="card stack-sm" style="border:1.5px solid rgba(24,95,165,.25)">' +
+      '<div class="row">' +
+        '<i class="ti ti-qrcode" style="font-size:22px;color:#185FA5;flex-shrink:0" aria-hidden="true"></i>' +
+        '<div style="flex:1">' +
+          '<div style="font-size:14px;font-weight:500;color:var(--color-text-primary)">Accès senior</div>' +
+          '<div style="font-size:12px;color:var(--color-text-muted);margin-top:2px">Générer le QR code à scanner par le patient</div>' +
+        '</div>' +
+      '</div>' +
+      '<button class="btn btn-primary" onclick="generateSeniorQR(\''+p.id+'\')" style="display:flex;align-items:center;justify-content:center;gap:8px">'+
+        '<i class="ti ti-qrcode" aria-hidden="true"></i> Générer le QR Senior'+
+      '</button>' +
+    '</div>' +
+
     '<button class="btn btn-primary" onclick="Router.go(\'edit-patient\')" style="display:flex;align-items:center;justify-content:center;gap:8px">'+
       '<i class="ti ti-edit" aria-hidden="true"></i> Modifier le profil'+
     '</button>' +
@@ -1642,6 +1695,146 @@ function _buildLowStocksSection() {
   '</div>';
 }
 
+// ============================================================
+// QR CODE SENIOR — génération depuis onglet Profil
+// ============================================================
+function generateSeniorQR(patientId) {
+  const p    = PatientService.getPatient(patientId);
+  const meds = PatientService.getMedications(patientId);
+  if (!p) { showToast('Patient introuvable', 'error'); return; }
+
+  // Construire le payload
+  const payload = {
+    v:  1,
+    id: p.id,
+    nom: p.nom,
+    prenom: p.prenom,
+    dateNaissance: p.dateNaissance || null,
+    notes: p.notes || '',
+    medications: meds.map(function(m) {
+      return {
+        id:       m.id,
+        name:     m.name,
+        dose:     m.dose,
+        schedule: m.schedule,
+        photo:    null, // photos exclues du QR (trop lourdes)
+        duration: m.duration || null,
+        stock:    m.stock    || null
+      };
+    }),
+    generatedAt: new Date().toISOString()
+  };
+
+  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+
+  // Charger qrcode.js si pas encore chargé puis afficher
+  if (!window.QRCode) {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+    s.onload = function() { _showQROverlay(p, encoded); };
+    s.onerror = function() { showToast('Impossible de charger la librairie QR', 'error'); };
+    document.head.appendChild(s);
+  } else {
+    _showQROverlay(p, encoded);
+  }
+}
+
+function _showQROverlay(p, encoded) {
+  const old = document.getElementById('qr-overlay');
+  if (old) old.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'qr-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;gap:20px;overflow-y:auto';
+
+  overlay.innerHTML =
+    '<div style="background:#fff;border-radius:20px;padding:24px;text-align:center;max-width:320px;width:100%">' +
+      '<div style="font-size:18px;font-weight:600;color:#111210;margin-bottom:4px">QR Senior</div>' +
+      '<div style="font-size:14px;color:#5A5955;margin-bottom:20px">'+p.prenom+' '+p.nom+'</div>' +
+      '<div id="qr-canvas" style="display:flex;justify-content:center;margin-bottom:16px"></div>' +
+
+      // Séparateur
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">' +
+        '<div style="flex:1;height:1px;background:#E8E5DE"></div>' +
+        '<div style="font-size:12px;color:#5A5955;white-space:nowrap">ou partager le code</div>' +
+        '<div style="flex:1;height:1px;background:#E8E5DE"></div>' +
+      '</div>' +
+
+      // Boutons partage
+      '<div style="display:flex;gap:10px;margin-bottom:16px">' +
+        '<button id="btn-copy-code" style="flex:1;padding:12px;background:#F1EFE8;color:#111210;border:none;border-radius:12px;font-size:14px;font-weight:500;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px">' +
+          '<i class="ti ti-copy" style="font-size:16px" aria-hidden="true"></i> Copier' +
+        '</button>' +
+        '<button id="btn-send-code" style="flex:1;padding:12px;background:#E6F1FB;color:#185FA5;border:none;border-radius:12px;font-size:14px;font-weight:500;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px">' +
+          '<i class="ti ti-send" style="font-size:16px" aria-hidden="true"></i> Envoyer' +
+        '</button>' +
+      '</div>' +
+
+      '<div style="font-size:12px;color:#5A5955;line-height:1.5;margin-bottom:16px">'+
+        'Le senior peut scanner ce QR ou coller le code dans son application. Une seule fois suffit.'+
+      '</div>' +
+      '<button id="btn-close-qr" style="width:100%;padding:14px;background:#185FA5;color:#fff;border:none;border-radius:12px;font-size:16px;font-weight:500;cursor:pointer;font-family:inherit">Fermer</button>'+
+    '</div>';
+
+  document.body.appendChild(overlay);
+
+  // Générer le QR
+  new QRCode(document.getElementById('qr-canvas'), {
+    text:         encoded,
+    width:        220,
+    height:       220,
+    colorDark:    '#111210',
+    colorLight:   '#ffffff',
+    correctLevel: QRCode.CorrectLevel.M
+  });
+
+  // Fermer
+  document.getElementById('btn-close-qr').addEventListener('click', closeSeniorQR);
+
+  // Copier le code
+  document.getElementById('btn-copy-code').addEventListener('click', function() {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(encoded).then(function() {
+        showToast('Code copié ✓ — collez-le dans l\'app senior', 'success');
+      }).catch(function() { _copyFallback(encoded); });
+    } else {
+      _copyFallback(encoded);
+    }
+  });
+
+  // Envoyer par SMS / mail
+  document.getElementById('btn-send-code').addEventListener('click', function() {
+    const msg = 'Bonjour ' + p.prenom + ',\n\nVoici votre code MediSafe à coller dans l\'application :\n\n' + encoded + '\n\nOuvrez l\'app, appuyez sur "Saisir le code" et collez ce texte.';
+    // Essayer SMS en premier (mobile), sinon mailto
+    const smsUrl   = 'sms:?body=' + encodeURIComponent(msg);
+    const mailUrl  = 'mailto:?subject=' + encodeURIComponent('Votre accès MediSafe — ' + p.prenom + ' ' + p.nom) + '&body=' + encodeURIComponent(msg);
+    // Sur mobile → SMS, sur desktop → mail
+    const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
+    window.open(isMobile ? smsUrl : mailUrl, '_blank');
+  });
+}
+
+// Fallback copie pour navigateurs sans clipboard API
+function _copyFallback(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+    showToast('Code copié ✓ — collez-le dans l\'app senior', 'success');
+  } catch(e) {
+    showToast('Impossible de copier — utilisez le QR code', 'warning');
+  }
+  document.body.removeChild(ta);
+}
+
+function closeSeniorQR() {
+  const overlay = document.getElementById('qr-overlay');
+  if (overlay) overlay.remove();
+}
+
 // ── EXPOSITION GLOBALE — requis pour les onclick inline dans le HTML dynamique ──
 window.openPatient          = openPatient;
 window.pinPress             = pinPress;
@@ -1666,3 +1859,5 @@ window.handlePatPhoto       = handlePatPhoto;
 window.toggleDur            = toggleDur;
 window.saveMed              = saveMed;
 window.renderPatientDetail  = renderPatientDetail;
+window.generateSeniorQR     = generateSeniorQR;
+window.closeSeniorQR        = closeSeniorQR;

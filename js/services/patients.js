@@ -126,7 +126,9 @@ function getPatientSummary(patientId) {
 
 // ── DONNÉES DE TEST ───────────────────────────────────────
 function seedIfEmpty() {
-  if (Object.keys(_load()).length > 0) return;
+  // Ne resemer que si jamais aucune donnée n'a existé (premier lancement absolu)
+  if (localStorage.getItem('medisafe_seeded')) return;
+  if (Object.keys(_load()).length > 0) { localStorage.setItem('medisafe_seeded','1'); return; }
   const p1 = addPatient({ nom:'Dupont', prenom:'Marcel', dateNaissance:'1945-03-12', notes:'Diabétique, allergie pénicilline' });
   const p2 = addPatient({ nom:'Martin', prenom:'Jeanne', dateNaissance:'1938-07-25', notes:'Hypertension' });
   const p3 = addPatient({ nom:'Leroy',  prenom:'Robert', dateNaissance:'1950-11-08', notes:'' });
@@ -135,6 +137,7 @@ function seedIfEmpty() {
   addMedication(p2.id, { name:'Amlodipine 5mg',   dose:'1 comprimé', schedule:[{time:'08:00',moment:'fasting'}] });
   addMedication(p2.id, { name:'Amoxicilline 500mg',dose:'1 gélule',  schedule:[{time:'08:00',moment:'during'},{time:'14:00',moment:'during'},{time:'20:00',moment:'during'}], duration:{days:7,startDate:new Date().toISOString().slice(0,10)} });
   addMedication(p3.id, { name:'Kardégic 75mg',    dose:'1 sachet',   schedule:[{time:'08:00',moment:'after'}] });
+  localStorage.setItem('medisafe_seeded','1');
 }
 
 
