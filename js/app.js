@@ -2079,11 +2079,11 @@ function _showQROverlay(p, encoded) {
   // Générer le QR
   new QRCode(document.getElementById('qr-canvas'), {
     text:         encoded,
-    width:        220,
-    height:       220,
-    colorDark:    '#111210',
+    width:        280,
+    height:       280,
+    colorDark:    '#000000',
     colorLight:   '#ffffff',
-    correctLevel: QRCode.CorrectLevel.M
+    correctLevel: QRCode.CorrectLevel.L
   });
 
   // Fermer
