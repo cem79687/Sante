@@ -2001,26 +2001,12 @@ async function generateSeniorQR(patientId) {
   const meds = await PatientService.getMedications(patientId);
   if (!p) { showToast('Patient introuvable', 'error'); return; }
 
-  // Construire le payload
+  // Payload minimal — seulement l'ID pour Supabase
   const payload = {
-    v:  1,
-    id: p.id,
-    nom: p.nom,
-    prenom: p.prenom,
-    dateNaissance: p.dateNaissance || null,
-    notes: p.notes || '',
-    medications: meds.map(function(m) {
-      return {
-        id:       m.id,
-        name:     m.name,
-        dose:     m.dose,
-        schedule: m.schedule,
-        photo:    null, // photos exclues du QR (trop lourdes)
-        duration: m.duration || null,
-        stock:    m.stock    || null
-      };
-    }),
-    generatedAt: new Date().toISOString()
+    v:      2,
+    id:     p.id,
+    nom:    p.nom,
+    prenom: p.prenom
   };
 
   const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
