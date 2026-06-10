@@ -1,8 +1,10 @@
-// app.js — MediSafe Aidant — Style B + Dashboard
+// app.js — MediSafe Aidant — Supabase Edition
 
 let _currentPatientId = null;
 let _pinBuffer        = '';
-let _patientTab       = 'today'; // today | history | ordonnances | profil
+let _patientTab       = 'today';
+let _aidantProfile    = null;
+let _realtimeChannel  = null;
 
 // Synchronisation window ↔ variables locales pour les onclick inline
 Object.defineProperty(window, '_patientTab', {
@@ -14,16 +16,46 @@ Object.defineProperty(window, '_currentPatientId', {
   set: function(v) { _currentPatientId = v; }
 });
 
-function initApp() {
-  if (!window.AuthService || !window.PatientService) {
+// Alias PatientService → SupabaseService pour compatibilité
+// (toutes les fonctions sont maintenant async)
+const PatientService = {
+  getPatients:           function() { return SupabaseService.getPatients(); },
+  getPatient:            function(id) { return SupabaseService.getPatient(id); },
+  addPatient:            function(d) { return SupabaseService.addPatient(d); },
+  updatePatient:         function(id,f) { return SupabaseService.updatePatient(id,f); },
+  deletePatient:         function(id) { return SupabaseService.deletePatient(id); },
+  getMedications:        function(pid) { return SupabaseService.getMedications(pid); },
+  getMedication:         function(pid,mid) { return SupabaseService.getMedication(pid,mid); },
+  addMedication:         function(pid,d) { return SupabaseService.addMedication(pid,d); },
+  updateMedication:      function(pid,mid,f) { return SupabaseService.updateMedication(pid,mid,f); },
+  deleteMedication:      function(pid,mid) { return SupabaseService.deleteMedication(pid,mid); },
+  getTodayMeds:          function(pid) { return SupabaseService.getTodayMeds(pid); },
+  confirmTaken:          function(pid,mid,dt) { return SupabaseService.confirmTaken(pid,mid,dt); },
+  getPatientSummary:     function(pid) { return SupabaseService.getPatientSummary(pid); },
+  getMedHistory7Days:    function(pid) { return SupabaseService.getMedHistory7Days(pid); },
+  getOrdonnances:        function(pid) { return SupabaseService.getOrdonnances(pid); },
+  addOrdonnance:         function(pid,d) { return SupabaseService.addOrdonnance(pid,d); },
+  deleteOrdonnance:      function(pid,oid) { return SupabaseService.deleteOrdonnance(pid,oid); },
+  getExpiringOrdonnances:function() { return SupabaseService.getExpiringOrdonnances(); },
+  getOrdonnanceStatus:   function(d) { return SupabaseService.getOrdonnanceStatus(d); },
+  getContacts:           function(pid) { return SupabaseService.getContacts(pid); },
+  addContact:            function(pid,d) { return SupabaseService.addContact(pid,d); },
+  updateContact:         function(pid,cid,f) { return SupabaseService.updateContact(pid,cid,f); },
+  deleteContact:         function(pid,cid) { return SupabaseService.deleteContact(pid,cid); },
+  getLowStocks:          function() { return SupabaseService.getLowStocks(); },
+  MOMENTS:               { fasting:'🌅', before:'⏱️', during:'🍽️', after:'✅', bedtime:'🌙' },
+  _dayProgress:          function(d) { return SupabaseService._dayProgress(d); }
+};
+
+async function initApp() {
+  if (!window.SupabaseService) {
     document.getElementById('app').innerHTML = '<div style="padding:20px;color:red">Erreur chargement services.</div>';
     return;
   }
-  PatientService.seedIfEmpty();
-  // Toujours demander le PIN au démarrage
-  AuthService.logout();
+
   Router.register('splash',         renderSplash);
-  Router.register('pin',            renderPin);
+  Router.register('login',          renderLogin);
+  Router.register('register',       renderRegister);
   Router.register('dashboard',      renderDashboard);
   Router.register('patients',       renderPatients);
   Router.register('patient-detail', renderPatientDetail);
@@ -35,6 +67,7 @@ function initApp() {
   Router.register('planning',       renderPlanning);
   Router.register('stats',          renderStats);
   Router.register('settings',       renderSettings);
+
   Router.go('splash');
 }
 
@@ -106,69 +139,246 @@ function renderSplash() {
       if(d) d.classList.toggle('active',i===step%3);
     });
   },500);
-  setTimeout(function(){
+  setTimeout(async function(){
     clearInterval(iv);
-    if(AuthService.isAuthenticated()) Router.go('dashboard');
-    else Router.go('pin');
-  },2200);
+    try {
+      const session = await SupabaseService.getSession();
+      if (session) {
+        _aidantProfile = await SupabaseService.getAidantProfile();
+        Router.go('dashboard');
+      } else {
+        Router.go('login');
+      }
+    } catch(e) {
+      Router.go('login');
+    }
+  }, 2200);
 }
 
 // ============================================================
-// PIN
+// LOGIN
 // ============================================================
-function renderPin() {
-  _pinBuffer='';
+function renderLogin() {
   document.getElementById('app').innerHTML =
-    '<div class="pin-screen">' +
-      '<div class="pin-logo"><i class="ti ti-shield-heart" style="font-size:30px;color:#fff" aria-hidden="true"></i></div>' +
-      '<div class="pin-card">' +
-        '<h2 style="font-size:20px;margin-bottom:4px">Code PIN</h2>' +
-        '<p class="text-muted">Entrez votre code à 8 chiffres</p>' +
-        '<div class="pin-dots" id="pin-dots">'+Array(8).fill('<div class="pin-dot"></div>').join('')+'</div>' +
-        '<p id="pin-msg" style="font-size:13px;color:#A32D2D;min-height:18px;text-align:center"></p>' +
-        '<div class="pin-keypad">' +
-          [1,2,3,4,5,6,7,8,9,'','0','⌫'].map(function(k){
-            if(k==='') return '<div></div>';
-            if(k==='⌫') return '<button class="pin-key pin-key-del" onclick="pinPress(\'del\')" aria-label="Effacer"><i class="ti ti-backspace" style="font-size:22px"></i></button>';
-            return '<button class="pin-key" onclick="pinPress(\''+k+'\')">'+k+'</button>';
-          }).join('') +
+    '<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;background:var(--color-bg);gap:24px">' +
+      '<div style="text-align:center">' +
+        '<div style="width:72px;height:72px;background:#185FA5;border-radius:20px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px">' +
+          '<i class="ti ti-shield-heart" style="font-size:36px;color:#fff" aria-hidden="true"></i>' +
         '</div>' +
-        '<p style="margin-top:24px;font-size:12px;color:var(--color-text-hint);text-align:center">PIN par défaut : 12345678</p>' +
+        '<div style="font-size:26px;font-weight:600;color:var(--color-text-primary)">MediSafe Aidant</div>' +
+        '<div style="font-size:15px;color:var(--color-text-muted);margin-top:6px">Connectez-vous pour continuer</div>' +
+      '</div>' +
+      '<div style="width:100%;max-width:360px;display:flex;flex-direction:column;gap:14px">' +
+        '<div>' +
+          '<label style="font-size:14px;font-weight:500;color:var(--color-text-primary);display:block;margin-bottom:6px">Email</label>' +
+          '<input id="login-email" type="email" placeholder="votre@email.com" autocomplete="email" style="width:100%;padding:14px;border:1.5px solid var(--color-border-strong);border-radius:12px;font-size:16px;box-sizing:border-box;background:var(--color-surface);color:var(--color-text-primary)">' +
+        '</div>' +
+        '<div>' +
+          '<label style="font-size:14px;font-weight:500;color:var(--color-text-primary);display:block;margin-bottom:6px">Mot de passe</label>' +
+          '<input id="login-password" type="password" placeholder="••••••••" autocomplete="current-password" style="width:100%;padding:14px;border:1.5px solid var(--color-border-strong);border-radius:12px;font-size:16px;box-sizing:border-box;background:var(--color-surface);color:var(--color-text-primary)">' +
+        '</div>' +
+        '<div id="login-error" style="color:#A32D2D;font-size:13px;text-align:center;display:none;padding:10px;background:#FCEBEB;border-radius:8px"></div>' +
+        '<button id="btn-login" style="width:100%;padding:16px;background:#185FA5;color:#fff;border:none;border-radius:14px;font-size:17px;font-weight:500;cursor:pointer;font-family:inherit;margin-top:4px">Se connecter</button>' +
+        '<button id="btn-go-register" style="width:100%;padding:14px;background:transparent;color:#185FA5;border:2px solid #185FA5;border-radius:14px;font-size:16px;font-weight:500;cursor:pointer;font-family:inherit">Créer un compte</button>' +
       '</div>' +
     '</div>';
-}
 
-function pinPress(key) {
-  if(key==='del') _pinBuffer=_pinBuffer.slice(0,-1);
-  else if(_pinBuffer.length<8) _pinBuffer+=key;
-  _updateDots(false);
-  if(_pinBuffer.length===8) setTimeout(_validatePin,150);
-}
-
-function _updateDots(error) {
-  document.querySelectorAll('.pin-dot').forEach(function(d,i){
-    d.classList.remove('filled','error');
-    if(error) d.classList.add('error');
-    else if(i<_pinBuffer.length) d.classList.add('filled');
+  document.getElementById('btn-login').addEventListener('click', _doLogin);
+  document.getElementById('login-password').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') _doLogin();
+  });
+  document.getElementById('btn-go-register').addEventListener('click', function() {
+    Router.go('register');
   });
 }
 
-function _validatePin() {
-  if(AuthService.checkPin(_pinBuffer)){ AuthService.login(); Router.go('dashboard'); }
-  else {
-    _updateDots(true);
-    let m=document.getElementById('pin-msg');
-    if(m) m.textContent='Code incorrect, réessayez.';
-    setTimeout(function(){ _pinBuffer=''; _updateDots(false); if(m) m.textContent=''; },900);
+async function _doLogin() {
+  const email    = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errEl    = document.getElementById('login-error');
+  const btn      = document.getElementById('btn-login');
+
+  if (!email || !password) { _showLoginError('Veuillez remplir tous les champs.'); return; }
+
+  btn.textContent = 'Connexion...';
+  btn.disabled    = true;
+
+  try {
+    await SupabaseService.signIn(email, password);
+    _aidantProfile = await SupabaseService.getAidantProfile();
+    Router.go('dashboard');
+  } catch(e) {
+    btn.textContent = 'Se connecter';
+    btn.disabled    = false;
+    _showLoginError('Email ou mot de passe incorrect.');
   }
+}
+
+function _showLoginError(msg) {
+  const el = document.getElementById('login-error');
+  if (el) { el.textContent = msg; el.style.display = 'block'; }
+}
+
+// ============================================================
+// REGISTER
+// ============================================================
+function renderRegister() {
+  document.getElementById('app').innerHTML =
+    '<div style="min-height:100vh;display:flex;flex-direction:column;padding:calc(32px + env(safe-area-inset-top,0px)) 24px 32px;background:var(--color-bg);gap:16px">' +
+      '<button id="btn-back-login" style="background:none;border:none;cursor:pointer;color:#185FA5;font-size:16px;display:flex;align-items:center;gap:6px;padding:0;font-family:inherit">' +
+        '<i class="ti ti-arrow-left" style="font-size:20px"></i> Retour' +
+      '</button>' +
+      '<div>' +
+        '<div style="font-size:24px;font-weight:600;color:var(--color-text-primary)">Créer un compte</div>' +
+        '<div style="font-size:14px;color:var(--color-text-muted);margin-top:4px">Espace aidant MediSafe</div>' +
+      '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:14px">' +
+        '<div style="display:flex;gap:12px">' +
+          '<div style="flex:1"><label style="font-size:14px;font-weight:500;display:block;margin-bottom:6px">Prénom</label>' +
+          '<input id="reg-prenom" type="text" placeholder="Marie" style="width:100%;padding:14px;border:1.5px solid var(--color-border-strong);border-radius:12px;font-size:16px;box-sizing:border-box"></div>' +
+          '<div style="flex:1"><label style="font-size:14px;font-weight:500;display:block;margin-bottom:6px">Nom</label>' +
+          '<input id="reg-nom" type="text" placeholder="Dupont" style="width:100%;padding:14px;border:1.5px solid var(--color-border-strong);border-radius:12px;font-size:16px;box-sizing:border-box"></div>' +
+        '</div>' +
+        '<div><label style="font-size:14px;font-weight:500;display:block;margin-bottom:6px">Email</label>' +
+        '<input id="reg-email" type="email" placeholder="votre@email.com" autocomplete="email" style="width:100%;padding:14px;border:1.5px solid var(--color-border-strong);border-radius:12px;font-size:16px;box-sizing:border-box"></div>' +
+
+        // Mot de passe + indicateur de force
+        '<div>' +
+          '<label style="font-size:14px;font-weight:500;display:block;margin-bottom:6px">Mot de passe</label>' +
+          '<div style="position:relative">' +
+            '<input id="reg-password" type="password" placeholder="8 caractères minimum" autocomplete="new-password" ' +
+              'style="width:100%;padding:14px 44px 14px 14px;border:1.5px solid var(--color-border-strong);border-radius:12px;font-size:16px;box-sizing:border-box">' +
+            '<button id="btn-toggle-pw" type="button" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--color-text-muted);padding:4px">' +
+              '<i id="pw-eye-icon" class="ti ti-eye" style="font-size:18px"></i>' +
+            '</button>' +
+          '</div>' +
+          // Barre de force
+          '<div style="margin-top:8px">' +
+            '<div style="display:flex;gap:4px;margin-bottom:5px">' +
+              '<div id="pw-bar-1" style="flex:1;height:4px;border-radius:99px;background:#E8E5DE;transition:background .3s"></div>' +
+              '<div id="pw-bar-2" style="flex:1;height:4px;border-radius:99px;background:#E8E5DE;transition:background .3s"></div>' +
+              '<div id="pw-bar-3" style="flex:1;height:4px;border-radius:99px;background:#E8E5DE;transition:background .3s"></div>' +
+              '<div id="pw-bar-4" style="flex:1;height:4px;border-radius:99px;background:#E8E5DE;transition:background .3s"></div>' +
+            '</div>' +
+            '<div id="pw-strength-label" style="font-size:12px;color:var(--color-text-muted);min-height:16px"></div>' +
+          '</div>' +
+          // Critères
+          '<div style="margin-top:8px;display:flex;flex-direction:column;gap:4px">' +
+            '<div id="crit-len"    style="font-size:12px;color:var(--color-text-muted);display:flex;align-items:center;gap:6px"><i class="ti ti-circle" style="font-size:10px"></i> 8 caractères minimum</div>' +
+            '<div id="crit-upper"  style="font-size:12px;color:var(--color-text-muted);display:flex;align-items:center;gap:6px"><i class="ti ti-circle" style="font-size:10px"></i> Une majuscule</div>' +
+            '<div id="crit-number" style="font-size:12px;color:var(--color-text-muted);display:flex;align-items:center;gap:6px"><i class="ti ti-circle" style="font-size:10px"></i> Un chiffre</div>' +
+            '<div id="crit-special" style="font-size:12px;color:var(--color-text-muted);display:flex;align-items:center;gap:6px"><i class="ti ti-circle" style="font-size:10px"></i> Un caractère spécial (!@#$...)</div>' +
+          '</div>' +
+        '</div>' +
+
+        '<div id="reg-error" style="color:#A32D2D;font-size:13px;text-align:center;display:none;padding:10px;background:#FCEBEB;border-radius:8px"></div>' +
+        '<button id="btn-register" style="width:100%;padding:16px;background:#185FA5;color:#fff;border:none;border-radius:14px;font-size:17px;font-weight:500;cursor:pointer;font-family:inherit;margin-top:4px">Créer mon compte</button>' +
+      '</div>' +
+    '</div>';
+
+  document.getElementById('btn-back-login').addEventListener('click', function() { Router.go('login'); });
+  document.getElementById('btn-register').addEventListener('click', _doRegister);
+
+  // Toggle afficher/masquer mot de passe
+  document.getElementById('btn-toggle-pw').addEventListener('click', function() {
+    const inp  = document.getElementById('reg-password');
+    const icon = document.getElementById('pw-eye-icon');
+    if (inp.type === 'password') {
+      inp.type = 'text';
+      icon.className = 'ti ti-eye-off';
+    } else {
+      inp.type = 'password';
+      icon.className = 'ti ti-eye';
+    }
+  });
+
+  // Indicateur de force en temps réel
+  document.getElementById('reg-password').addEventListener('input', function() {
+    _updatePasswordStrength(this.value);
+  });
+}
+
+function _updatePasswordStrength(pw) {
+  const hasLen     = pw.length >= 8;
+  const hasUpper   = /[A-Z]/.test(pw);
+  const hasNumber  = /[0-9]/.test(pw);
+  const hasSpecial = /[^A-Za-z0-9]/.test(pw);
+
+  // Mettre à jour les critères visuels
+  _setCrit('crit-len',     hasLen);
+  _setCrit('crit-upper',   hasUpper);
+  _setCrit('crit-number',  hasNumber);
+  _setCrit('crit-special', hasSpecial);
+
+  // Calculer le score 0-4
+  const score = [hasLen, hasUpper, hasNumber, hasSpecial].filter(Boolean).length;
+
+  const levels = [
+    { color: '#E8E5DE', label: '',               bars: 0 },
+    { color: '#A32D2D', label: 'Très faible',    bars: 1 },
+    { color: '#854F0B', label: 'Faible',         bars: 2 },
+    { color: '#185FA5', label: 'Bon',            bars: 3 },
+    { color: '#3B6D11', label: 'Très fort ✓',   bars: 4 },
+  ];
+
+  const level = pw.length === 0 ? levels[0] : levels[score] || levels[1];
+
+  // Mettre à jour les barres
+  for (let i = 1; i <= 4; i++) {
+    const bar = document.getElementById('pw-bar-' + i);
+    if (bar) bar.style.background = i <= level.bars ? level.color : '#E8E5DE';
+  }
+
+  // Label
+  const lbl = document.getElementById('pw-strength-label');
+  if (lbl) {
+    lbl.textContent = level.label;
+    lbl.style.color = level.color;
+    lbl.style.fontWeight = score === 4 ? '500' : '400';
+  }
+}
+
+function _setCrit(id, ok) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.color = ok ? '#3B6D11' : 'var(--color-text-muted)';
+  el.querySelector('i').className = ok ? 'ti ti-circle-check-filled' : 'ti ti-circle';
+  el.querySelector('i').style.color = ok ? '#3B6D11' : 'var(--color-text-muted)';
+}
+
+async function _doRegister() {
+  const prenom   = document.getElementById('reg-prenom').value.trim();
+  const nom      = document.getElementById('reg-nom').value.trim();
+  const email    = document.getElementById('reg-email').value.trim();
+  const password = document.getElementById('reg-password').value;
+  const btn      = document.getElementById('btn-register');
+
+  if (!prenom || !nom || !email || !password) { _showRegisterError('Veuillez remplir tous les champs.'); return; }
+  if (password.length < 8) { _showRegisterError('Le mot de passe doit faire 8 caractères minimum.'); return; }
+
+  btn.textContent = 'Création...';
+  btn.disabled    = true;
+
+  try {
+    await SupabaseService.signUp(email, password, nom, prenom);
+    showToast('Compte créé ! Vérifiez votre email pour confirmer.', 'success');
+    Router.go('login');
+  } catch(e) {
+    btn.textContent = 'Créer mon compte';
+    btn.disabled    = false;
+    _showRegisterError(e.message || 'Erreur lors de la création du compte.');
+  }
+}
+
+function _showRegisterError(msg) {
+  const el = document.getElementById('reg-error');
+  if (el) { el.textContent = msg; el.style.display = 'block'; }
 }
 
 // ============================================================
 // NAV — 5 onglets avec dashboard
 // ============================================================
 function _nav(active) {
-  const patients=PatientService.getPatients();
-  const alerts=patients.filter(function(p){ return PatientService.getPatientSummary(p.id).missed>0; }).length;
   const tabs=[
     {id:'dashboard', icon:'ti-layout-dashboard', label:'Accueil'},
     {id:'patients',  icon:'ti-users',            label:'Patients'},
@@ -178,9 +388,8 @@ function _nav(active) {
   ];
   return '<nav class="bottom-nav">' +
     tabs.map(function(t){
-      const badge=(t.id==='dashboard'&&alerts>0)?'<span class="nav-badge">'+alerts+'</span>':'';
       return '<button class="nav-item'+(t.id===active?' active':'')+'" onclick="Router.go(\''+t.id+'\')" aria-label="'+t.label+'">'+
-        badge+'<i class="ti '+t.icon+'" aria-hidden="true"></i>'+t.label+
+        '<i class="ti '+t.icon+'" aria-hidden="true"></i>'+t.label+
       '</button>';
     }).join('')+
   '</nav>';
@@ -189,24 +398,25 @@ function _nav(active) {
 // ============================================================
 // DASHBOARD
 // ============================================================
-function renderDashboard() {
-  const patients = PatientService.getPatients();
+async function renderDashboard() {
+  const patients = await PatientService.getPatients();
   const today    = new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'});
   const MOMENTS  = PatientService.MOMENTS;
 
   // Stats globales
   let totalMissed=0, totalTaken=0, totalPending=0, totalMeds=0;
-  patients.forEach(function(p){
-    const s=PatientService.getPatientSummary(p.id);
+  for (const p of patients) {
+    const s = await PatientService.getPatientSummary(p.id);
     totalMissed+=s.missed; totalTaken+=s.taken; totalPending+=s.pending; totalMeds+=s.total;
-  });
+  }
   const globalRate = totalMeds>0 ? Math.round((totalTaken/totalMeds)*100) : 0;
   const rateColor  = globalRate>=80?'#3B6D11':globalRate>=50?'#854F0B':'#A32D2D';
 
   // Alertes — patients avec prises manquées
   let alertsHTML='';
-  patients.forEach(function(p){
-    const meds=PatientService.getTodayMeds(p.id).filter(function(m){return m.status==='missed';});
+  for (const p of patients) {
+    const allMeds = await PatientService.getTodayMeds(p.id);
+    const meds    = allMeds.filter(function(m){ return m.status==='missed'; });
     meds.slice(0,2).forEach(function(m){
       alertsHTML+=
         '<div onclick="openPatient(\''+p.id+'\')" style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#FCEBEB;border-radius:10px;margin-bottom:6px;border:0.5px solid rgba(163,45,45,.15);cursor:pointer">'+
@@ -218,18 +428,19 @@ function renderDashboard() {
           '<i class="ti ti-chevron-right" style="font-size:14px;color:#A32D2D" aria-hidden="true"></i>'+
         '</div>';
     });
-  });
+  }
   if(!alertsHTML) alertsHTML='<div style="text-align:center;padding:10px 0;font-size:13px;color:var(--color-text-secondary)">Aucune alerte — tout va bien ✓</div>';
 
   // Suivi du jour — barres de progression
-  let suiviHTML=patients.map(function(p){
-    const s=PatientService.getPatientSummary(p.id);
+  let suiviHTML='';
+  for (const p of patients) {
+    const s=await PatientService.getPatientSummary(p.id);
     const rate=s.total>0?Math.round((s.taken/s.total)*100):0;
     const color=rate>=80?'#3B6D11':rate>=50?'#854F0B':'#A32D2D';
     const bgBadge=rate>=80?'#EAF3DE':rate>=50?'#FAEEDA':'#FCEBEB';
     const colorBadge=rate>=80?'#27500A':rate>=50?'#633806':'#791F1F';
     const initials=p.prenom[0].toUpperCase()+p.nom[0].toUpperCase();
-    return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'+
+    suiviHTML+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'+
       '<div class="avatar" style="width:34px;height:34px;font-size:12px;flex-shrink:0">'+initials+'</div>'+
       '<div style="flex:1;min-width:0">'+
         '<div style="font-size:12px;font-weight:500;color:var(--color-text-primary);margin-bottom:4px">'+p.prenom+' '+p.nom+'</div>'+
@@ -242,21 +453,22 @@ function renderDashboard() {
       '</div>'+
       '<span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:99px;background:'+bgBadge+';color:'+colorBadge+'">'+s.taken+'/'+s.total+'</span>'+
     '</div>';
-  }).join('');
+  }
   if(!suiviHTML) suiviHTML='<p style="font-size:13px;color:var(--color-text-secondary);text-align:center;padding:8px 0">Aucun patient configuré.</p>';
 
   // Timeline prochaines prises — tous patients
   let now=new Date();
   const timeline=[];
-  patients.forEach(function(p){
-    PatientService.getTodayMeds(p.id).forEach(function(m){
+  for (const p of patients) {
+    const pMeds = await PatientService.getTodayMeds(p.id);
+    pMeds.forEach(function(m){
       if(m.status==='pending'){
         const parts=m.time.split(':');
         let t=new Date(); t.setHours(parseInt(parts[0]),parseInt(parts[1]),0,0);
         if(t>now) timeline.push({time:m.time,ts:t,name:m.name,patient:p.prenom+' '+p.nom,moment:m.moment,patientId:p.id});
       }
     });
-  });
+  }
   timeline.sort(function(a,b){return a.ts-b.ts;});
 
   let timelineHTML=timeline.slice(0,5).map(function(t){
@@ -271,7 +483,7 @@ function renderDashboard() {
   if(!timelineHTML) timelineHTML='<p style="font-size:13px;color:var(--color-text-secondary);text-align:center;padding:8px 0">Toutes les prises du jour sont effectuées ✓</p>';
 
   // Ordonnances réelles depuis PatientService
-  const expiringOrdos = PatientService.getExpiringOrdonnances();
+  const expiringOrdos = await PatientService.getExpiringOrdonnances();
   let ordoHTML = '';
   if (expiringOrdos.length === 0) {
     ordoHTML = '<div style="text-align:center;padding:10px 0;font-size:13px;color:var(--color-text-secondary)">Aucune ordonnance &agrave; renouveler ✓</div>';
@@ -346,7 +558,7 @@ function renderDashboard() {
         '</div>'+
 
         // Stocks faibles
-        _buildLowStocksSection()+
+        await _buildLowStocksSection()+
 
       '</div>'+
     '</div>'+
@@ -384,11 +596,16 @@ function openPatient(id){ _currentPatientId=id; Router.go('patient-detail'); }
 // ============================================================
 // LISTE PATIENTS
 // ============================================================
-function renderPatients() {
-  const patients=PatientService.getPatients();
+async function renderPatients() {
+  const patients=await PatientService.getPatients();
   const today=new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'});
   let totalMissed=0;
-  patients.forEach(function(p){ totalMissed+=PatientService.getPatientSummary(p.id).missed; });
+  const summaries = {};
+  for (const p of patients) {
+    const s = await PatientService.getPatientSummary(p.id);
+    summaries[p.id] = s;
+    totalMissed += s.missed;
+  }
 
   const alertHTML=totalMissed>0
     ? '<div class="alert alert-danger" style="margin:0 12px 8px">'+
@@ -397,32 +614,35 @@ function renderPatients() {
       '</div>'
     : '';
 
-  const listHTML=patients.length===0
-    ? '<div style="text-align:center;padding:40px 0"><p style="font-size:36px;margin-bottom:12px">👤</p><p class="text-muted">Aucun patient pour l\'instant</p></div>'
-    : patients.map(function(p){
-        const s=PatientService.getPatientSummary(p.id);
-        const initials=p.prenom[0].toUpperCase()+p.nom[0].toUpperCase();
-        const ava=p.photo
-          ? '<img src="'+p.photo+'" style="width:52px;height:52px;border-radius:50%;object-fit:cover;flex-shrink:0" alt="'+p.prenom+'">'
-          : '<div class="avatar" style="width:52px;height:52px;font-size:16px">'+initials+'</div>';
-        const badge=s.missed>0
-          ? '<span class="badge badge-danger">⚠ '+s.missed+' manqu&eacute;</span>'
-          : s.pending>0 ? '<span class="badge badge-warning">💊 '+s.pending+' &agrave; venir</span>'
-          : s.total>0  ? '<span class="badge badge-ok">✓ Tout pris</span>'
-          : '<span class="badge" style="background:#F1EFE8;color:var(--color-text-muted)">Aucun m&eacute;d.</span>';
-        const age=p.dateNaissance?_age(p.dateNaissance)+' ans · ':'';
-        return '<div class="patient-card" onclick="openPatient(\''+p.id+'\')" role="button">'+
-          ava+
-          '<div style="flex:1;min-width:0">'+
-            '<div style="font-size:16px;font-weight:500;margin-bottom:3px">'+p.prenom+' '+p.nom+'</div>'+
-            '<div class="text-muted" style="margin-bottom:7px">'+age+s.total+' m&eacute;dicament'+(s.total>1?'s':'')+'</div>'+
-            badge+
-          '</div>'+
-          '<i class="ti ti-chevron-right" style="font-size:20px;color:var(--color-text-muted);flex-shrink:0" aria-hidden="true"></i>'+
-        '</div>';
-      }).join('');
+  let listHTML='';
+  if (patients.length===0) {
+    listHTML='<div style="text-align:center;padding:40px 0"><p style="font-size:36px;margin-bottom:12px">👤</p><p class="text-muted">Aucun patient pour l\'instant</p></div>';
+  } else {
+    for (const p of patients) {
+      const s=summaries[p.id];
+      const initials=p.prenom[0].toUpperCase()+p.nom[0].toUpperCase();
+      const ava=p.photo
+        ? '<img src="'+p.photo+'" style="width:52px;height:52px;border-radius:50%;object-fit:cover;flex-shrink:0" alt="'+p.prenom+'">'
+        : '<div class="avatar" style="width:52px;height:52px;font-size:16px">'+initials+'</div>';
+      const badge=s.missed>0
+        ? '<span class="badge badge-danger">⚠ '+s.missed+' manqu&eacute;</span>'
+        : s.pending>0 ? '<span class="badge badge-warning">💊 '+s.pending+' &agrave; venir</span>'
+        : s.total>0   ? '<span class="badge badge-ok">✓ Tout pris</span>'
+        : '<span class="badge" style="background:#F1EFE8;color:var(--color-text-muted)">Aucun m&eacute;d.</span>';
+      const age=p.dateNaissance?_age(p.dateNaissance)+' ans · ':'';
+      listHTML+='<div class="patient-card" onclick="openPatient(\''+p.id+'\')" role="button">'+
+        ava+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-size:16px;font-weight:500;margin-bottom:3px">'+p.prenom+' '+p.nom+'</div>'+
+          '<div class="text-muted" style="margin-bottom:7px">'+age+s.total+' m&eacute;dicament'+(s.total>1?'s':'')+'</div>'+
+          badge+
+        '</div>'+
+        '<i class="ti ti-chevron-right" style="font-size:20px;color:var(--color-text-muted);flex-shrink:0" aria-hidden="true"></i>'+
+      '</div>';
+    }
+  }
 
-  let searchHTML =
+  const searchHTML =
     '<div style="padding:0 12px 8px">'+
       '<div style="position:relative">'+
         '<i class="ti ti-search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:16px;color:var(--color-text-muted)" aria-hidden="true"></i>'+
@@ -435,9 +655,6 @@ function renderPatients() {
     '<div style="padding-bottom:80px">'+
       '<div class="page-header">'+
         '<div class="page-header-left"><h1>Mes patients</h1><div class="sub">'+today+'</div></div>'+
-        '<button class="icon-btn" onclick="AuthService.logout();Router.go(\'pin\')" aria-label="Verrouiller">'+
-          '<i class="ti ti-lock" style="font-size:18px" aria-hidden="true"></i>'+
-        '</button>'+
       '</div>'+
       alertHTML+
       searchHTML+
@@ -452,11 +669,11 @@ function renderPatients() {
 // ============================================================
 // FICHE PATIENT — avec chips navigation
 // ============================================================
-function renderPatientDetail(tab) {
+async function renderPatientDetail(tab) {
   if (tab) _patientTab = tab;
-  const p = PatientService.getPatient(_currentPatientId);
+  const p = await PatientService.getPatient(_currentPatientId);
   if (!p) { Router.go('dashboard'); return; }
-  const s        = PatientService.getPatientSummary(_currentPatientId);
+  const s        = await PatientService.getPatientSummary(_currentPatientId);
   const initials = p.prenom[0].toUpperCase() + p.nom[0].toUpperCase();
 
   const avaHTML = p.photo
@@ -481,10 +698,10 @@ function renderPatientDetail(tab) {
   }).join('');
 
   let tabContent = '';
-  if      (_patientTab === 'today')       tabContent = _buildTodayTab(_currentPatientId);
-  else if (_patientTab === 'history')     tabContent = _buildHistorySection(_currentPatientId);
-  else if (_patientTab === 'ordonnances') tabContent = _buildOrdonnancesSection(_currentPatientId);
-  else if (_patientTab === 'contacts')    tabContent = _buildContactsTab(_currentPatientId);
+  if      (_patientTab === 'today')       tabContent = await _buildTodayTab(_currentPatientId);
+  else if (_patientTab === 'history')     tabContent = await _buildHistorySection(_currentPatientId);
+  else if (_patientTab === 'ordonnances') tabContent = await _buildOrdonnancesSection(_currentPatientId);
+  else if (_patientTab === 'contacts')    tabContent = await _buildContactsTab(_currentPatientId);
   else if (_patientTab === 'profil')      tabContent = _buildProfilTab(p);
 
   document.getElementById('app').innerHTML =
@@ -573,16 +790,16 @@ function renderPatientDetail(tab) {
     });
   }
 }
-function handleTap(medId,dt,status){
+async function handleTap(medId,dt,status){
   if(status==='taken') return;
-  PatientService.confirmTaken(_currentPatientId,medId,dt);
+  await PatientService.confirmTaken(_currentPatientId,medId,dt);
   renderPatientDetail(); // garde l'onglet actif
 }
 
 // ============================================================
 // AJOUTER PATIENT
 // ============================================================
-function renderAddPatient() {
+async function renderAddPatient() {
   document.getElementById('app').innerHTML=
     '<div style="padding:20px;padding-bottom:40px" class="stack">'+
       '<div class="row">'+
@@ -618,7 +835,7 @@ function handlePatPhoto(input){
   r.readAsDataURL(file);
 }
 
-function savePatient(){
+async function savePatient(){
   let prenom = document.getElementById('p-prenom').value.trim();
   let nom    = document.getElementById('p-nom').value.trim();
   let dob    = _getDateFromSelects('p-dob');
@@ -627,7 +844,7 @@ function savePatient(){
   if (!prenom) { showToast('Merci de saisir le prénom.', 'warning'); return; }
   if (!nom)    { showToast('Merci de saisir le nom.', 'warning'); return; }
   try {
-    const p = PatientService.addPatient({ nom:nom, prenom:prenom, dateNaissance:dob||null, photo:photo, notes:notes });
+    const p = await PatientService.addPatient({ nom:nom, prenom:prenom, dateNaissance:dob||null, photo:photo, notes:notes });
     _currentPatientId = p.id;
     showToast('Patient ajouté avec succès', 'success');
     Router.go('patient-detail');
@@ -640,7 +857,7 @@ function savePatient(){
 let ML={fasting:'🌅',before:'⏱️',during:'🍽️',after:'✅',bedtime:'🌙'};
 let MLlabel={fasting:'À jeun',before:'Avant repas',during:'Avec repas',after:'Après repas',bedtime:'Au coucher'};
 
-function renderAddMedication(){
+async function renderAddMedication(){
   if (!_currentPatientId) { showToast('Erreur : aucun patient sélectionné.', 'error'); Router.go('patients'); return; }
   document.getElementById('app').innerHTML=
     '<div style="padding:20px;padding-bottom:40px" class="stack">'+
@@ -726,7 +943,7 @@ function handleMedPhoto(input){
   r.readAsDataURL(file);
 }
 
-function saveMed(){
+async function saveMed(){
   if (!_currentPatientId) { showToast('Erreur : aucun patient sélectionné.', 'error'); Router.go('patients'); return; }
   let name=document.getElementById('m-name').value.trim();
   let dose=document.getElementById('m-dose').value.trim();
@@ -749,7 +966,7 @@ function saveMed(){
   const stockEl = document.getElementById('m-stock');
   const stock   = stockEl && stockEl.value ? parseInt(stockEl.value) : null;
   try{
-    PatientService.addMedication(_currentPatientId,{name:name,dose:dose,schedule:slots,photo:photo,duration:duration,stock:stock,stockPerDay:slots.length});
+    await PatientService.addMedication(_currentPatientId,{name:name,dose:dose,schedule:slots,photo:photo,duration:duration,stock:stock,stockPerDay:slots.length});
     _patientTab = 'today'; showToast('Médicament ajouté', 'success'); Router.go('patient-detail');
   }catch(e){showToast('Erreur : ' + e.message, 'error');}
 }
@@ -757,12 +974,13 @@ function saveMed(){
 // ============================================================
 // PLANNING
 // ============================================================
-function renderPlanning(){
-  const patients=PatientService.getPatients();
+async function renderPlanning(){
+  const patients=await PatientService.getPatients();
   const today=new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'});
   const MOMENTS=PatientService.MOMENTS;
-  let rowsHTML=patients.map(function(p){
-    const meds=PatientService.getTodayMeds(p.id);
+  let rowsHTML='';
+  for (const p of patients) {
+    const meds=await PatientService.getTodayMeds(p.id);
     const initials=p.prenom[0].toUpperCase()+p.nom[0].toUpperCase();
     let timesHTML=meds.map(function(m){
       const bg=m.status==='taken'?'#EAF3DE':m.status==='missed'?'#FCEBEB':'#F1EFE8';
@@ -774,14 +992,14 @@ function renderPlanning(){
       '</div>';
     }).join('');
     if(!timesHTML) timesHTML='<span class="text-muted" style="font-size:12px">Aucun m&eacute;d.</span>';
-    return '<div class="card" style="cursor:pointer" onclick="openPatient(\''+p.id+'\')">'+
+    rowsHTML+='<div class="card" style="cursor:pointer" onclick="openPatient(\''+p.id+'\')">'+
       '<div class="row" style="margin-bottom:10px">'+
         '<div class="avatar" style="width:38px;height:38px;font-size:13px">'+initials+'</div>'+
         '<span style="font-weight:500;font-size:15px">'+p.prenom+' '+p.nom+'</span>'+
       '</div>'+
       '<div style="display:flex;gap:6px;flex-wrap:wrap">'+timesHTML+'</div>'+
     '</div>';
-  }).join('');
+  }
   if(!rowsHTML) rowsHTML='<p class="text-muted" style="text-align:center;padding:40px 0">Aucun patient.</p>';
   document.getElementById('app').innerHTML=
     '<div style="padding-bottom:80px">'+
@@ -793,14 +1011,15 @@ function renderPlanning(){
 // ============================================================
 // STATS
 // ============================================================
-function renderStats(){
-  const patients=PatientService.getPatients();
-  let statsHTML=patients.map(function(p){
-    const s=PatientService.getPatientSummary(p.id);
+async function renderStats(){
+  const patients=await PatientService.getPatients();
+  let statsHTML='';
+  for (const p of patients) {
+    const s=await PatientService.getPatientSummary(p.id);
     const rate=s.total>0?Math.round((s.taken/s.total)*100):0;
     const initials=p.prenom[0].toUpperCase()+p.nom[0].toUpperCase();
     const color=rate>=80?'#3B6D11':rate>=50?'#854F0B':'#A32D2D';
-    return '<div class="card">'+
+    statsHTML+='<div class="card">'+
       '<div class="row" style="margin-bottom:12px">'+
         '<div class="avatar" style="width:42px;height:42px;font-size:14px">'+initials+'</div>'+
         '<div style="flex:1"><div style="font-weight:500;font-size:15px">'+p.prenom+' '+p.nom+'</div>'+
@@ -809,7 +1028,7 @@ function renderStats(){
       '</div>'+
       '<div class="progress-bar"><div class="progress-fill" style="width:'+rate+'%;background:'+color+'"></div></div>'+
     '</div>';
-  }).join('');
+  }
   if(!statsHTML) statsHTML='<p class="text-muted" style="text-align:center;padding:40px 0">Aucun patient.</p>';
   document.getElementById('app').innerHTML=
     '<div style="padding-bottom:80px">'+
@@ -821,31 +1040,54 @@ function renderStats(){
 // ============================================================
 // RÉGLAGES
 // ============================================================
-function renderSettings(){
+async function renderSettings(){
+  const profile = await SupabaseService.getAidantProfile();
+  const email   = profile ? profile.email : '';
+  const nom     = profile ? profile.prenom + ' ' + profile.nom : '';
+
   document.getElementById('app').innerHTML=
     '<div style="padding-bottom:80px">'+
       '<div class="page-header"><div class="page-header-left"><h1>R&eacute;glages</h1></div></div>'+
       '<div style="padding:0 12px" class="stack">'+
+
         '<div class="card stack-sm">'+
-          '<p class="section-title">S&eacute;curit&eacute;</p>'+
-          '<div class="row" style="min-height:50px"><i class="ti ti-lock" style="font-size:22px;color:#185FA5" aria-hidden="true"></i><div style="flex:1"><div style="font-weight:500">Code PIN</div><div class="text-muted">Modifier votre code</div></div><button onclick="AuthService.logout();Router.go(\'pin\')" style="background:none;border:1.5px solid #185FA5;border-radius:99px;padding:5px 16px;font-size:13px;cursor:pointer;color:#185FA5;font-family:inherit;font-weight:500">Modifier</button></div>'+
+          '<p class="section-title">Mon compte</p>'+
+          '<div class="row" style="min-height:50px">'+
+            '<i class="ti ti-user-circle" style="font-size:22px;color:#185FA5" aria-hidden="true"></i>'+
+            '<div style="flex:1"><div style="font-weight:500">'+nom+'</div><div class="text-muted">'+email+'</div></div>'+
+          '</div>'+
           '<div style="height:0.5px;background:var(--color-border-tertiary)"></div>'+
-          '<div class="row" style="min-height:50px"><i class="ti ti-logout" style="font-size:22px;color:#A32D2D" aria-hidden="true"></i><div style="flex:1"><div style="font-weight:500">Verrouiller</div><div class="text-muted">Retour à l\'écran PIN</div></div><button onclick="AuthService.logout();Router.go(\'pin\')" style="background:none;border:1.5px solid #A32D2D;border-radius:99px;padding:5px 16px;font-size:13px;cursor:pointer;color:#A32D2D;font-family:inherit;font-weight:500">Verrouiller</button></div>'+
+          '<div class="row" style="min-height:50px">'+
+            '<i class="ti ti-logout" style="font-size:22px;color:#A32D2D" aria-hidden="true"></i>'+
+            '<div style="flex:1"><div style="font-weight:500">Se déconnecter</div><div class="text-muted">Retour à l\'écran de connexion</div></div>'+
+            '<button id="btn-logout" style="background:none;border:1.5px solid #A32D2D;border-radius:99px;padding:5px 16px;font-size:13px;cursor:pointer;color:#A32D2D;font-family:inherit;font-weight:500">Déconnexion</button>'+
+          '</div>'+
         '</div>'+
+
         '<div class="card stack-sm">'+
           '<p class="section-title">Donn&eacute;es</p>'+
-          '<div class="row" style="min-height:50px"><i class="ti ti-trash" style="font-size:22px;color:#A32D2D" aria-hidden="true"></i><div style="flex:1"><div style="font-weight:500">R&eacute;initialiser</div><div class="text-muted">Supprimer toutes les donn&eacute;es</div></div><button onclick="resetAll()" style="background:#FCEBEB;border:none;border-radius:99px;padding:5px 16px;font-size:13px;cursor:pointer;color:#A32D2D;font-family:inherit;font-weight:500">Reset</button></div>'+
+          '<div class="row" style="min-height:50px">'+
+            '<i class="ti ti-trash" style="font-size:22px;color:#A32D2D" aria-hidden="true"></i>'+
+            '<div style="flex:1"><div style="font-weight:500">R&eacute;initialiser</div><div class="text-muted">Supprimer toutes les données locales</div></div>'+
+            '<button onclick="resetAll()" style="background:#FCEBEB;border:none;border-radius:99px;padding:5px 16px;font-size:13px;cursor:pointer;color:#A32D2D;font-family:inherit;font-weight:500">Reset</button>'+
+          '</div>'+
         '</div>'+
-        '<div class="card"><p class="section-title">Version</p><p class="text-muted">MediSafe Aidant v1.0 — Phase test</p></div>'+
+
+        '<div class="card"><p class="section-title">Version</p><p class="text-muted">MediSafe Aidant v2.0 — Supabase Edition</p></div>'+
       '</div>'+
     '</div>'+_nav('settings');
+
+  document.getElementById('btn-logout').addEventListener('click', async function() {
+    try { await SupabaseService.signOut(); } catch(e) {}
+    Router.go('login');
+  });
 }
 
-function resetAll(){
+async function resetAll(){
   if(confirm('Supprimer toutes les données ? Action irréversible.')){
+    try { await SupabaseService.signOut(); } catch(e) {}
     localStorage.clear();
-    localStorage.setItem('medisafe_seeded','1'); // empêche le reseed au redémarrage
-    Router.go('splash');
+    Router.go('login');
   }
 }
 
@@ -856,8 +1098,8 @@ if(document.readyState==='loading'){
 // ============================================================
 // MODIFIER PROFIL PATIENT
 // ============================================================
-function renderEditPatient() {
-  const p = PatientService.getPatient(_currentPatientId);
+async function renderEditPatient() {
+  const p = await PatientService.getPatient(_currentPatientId);
   if (!p) { Router.go('patients'); return; }
 
   document.getElementById('app').innerHTML =
@@ -909,7 +1151,7 @@ function renderEditPatient() {
   document.getElementById('pat-photo').dataset.photo = p.photo || '';
 }
 
-function saveEditPatient() {
+async function saveEditPatient() {
   let prenom = document.getElementById('p-prenom').value.trim();
   let nom    = document.getElementById('p-nom').value.trim();
   let dob    = _getDateFromSelects('p-dob');
@@ -920,7 +1162,7 @@ function saveEditPatient() {
   if (!nom)    { showToast('Merci de saisir le nom.', 'warning'); return; }
 
   try {
-    PatientService.updatePatient(_currentPatientId, {
+    await PatientService.updatePatient(_currentPatientId, {
       prenom: prenom, nom: nom,
       dateNaissance: dob || null,
       notes: notes,
@@ -930,11 +1172,11 @@ function saveEditPatient() {
   } catch(e) { showToast('Erreur : ' + e.message, 'error'); }
 }
 
-function confirmDeletePatient() {
-  const p = PatientService.getPatient(_currentPatientId);
+async function confirmDeletePatient() {
+  const p = await PatientService.getPatient(_currentPatientId);
   if (!p) return;
   if (confirm('Supprimer ' + p.prenom + ' ' + p.nom + ' ? Toutes ses données seront perdues.')) {
-    PatientService.deletePatient(_currentPatientId);
+    await PatientService.deletePatient(_currentPatientId);
     _currentPatientId = null;
     Router.go('patients');
   }
@@ -945,20 +1187,20 @@ function confirmDeletePatient() {
 // ============================================================
 let _editMedId = null;
 
-function editMedication(medId) {
+async function editMedication(medId) {
   _editMedId = medId;
   Router.go('edit-medication');
 }
 
-function confirmDeleteMed(medId, medName) {
+async function confirmDeleteMed(medId, medName) {
   if (confirm('Supprimer ' + medName + ' ? L\'historique des prises sera conservé.')) {
-    PatientService.deleteMedication(_currentPatientId, medId);
+    await PatientService.deleteMedication(_currentPatientId, medId);
     _patientTab = 'today'; showToast('Médicament supprimé', 'success'); Router.go('patient-detail');
   }
 }
 
-function renderEditMedication() {
-  let med = PatientService.getMedication(_currentPatientId, _editMedId);
+async function renderEditMedication() {
+  let med = await PatientService.getMedication(_currentPatientId, _editMedId);
   if (!med) { Router.go('patient-detail'); return; }
 
   let ML     = {fasting:'🌅',before:'⏱️',during:'🍽️',after:'✅',bedtime:'🌙'};
@@ -1048,7 +1290,7 @@ function addSlotWithValue(timeVal, momentVal) {
   selMoment(id, momentVal || 'after');
 }
 
-function saveEditMedication() {
+async function saveEditMedication() {
   let name   = document.getElementById('m-name').value.trim();
   let dose   = document.getElementById('m-dose').value.trim();
   let photo  = document.getElementById('photo-preview').dataset.photo || null;
@@ -1074,7 +1316,7 @@ function saveEditMedication() {
   if (!slots.length) { showToast("Merci d'ajouter au moins un horaire.", 'warning'); return; }
 
   try {
-    PatientService.updateMedication(_currentPatientId, _editMedId, {
+    await PatientService.updateMedication(_currentPatientId, _editMedId, {
       name: name, dose: dose, schedule: slots,
       photo: photo || null, duration: duration
     });
@@ -1085,7 +1327,7 @@ function saveEditMedication() {
 // ============================================================
 // SCAN ORDONNANCE — ajout
 // ============================================================
-function renderAddOrdonnance() {
+async function renderAddOrdonnance() {
   document.getElementById('app').innerHTML =
     '<div style="padding:20px;padding-bottom:40px" class="stack">' +
       '<div class="row">' +
@@ -1150,7 +1392,7 @@ function handleOrdoPhoto(input) {
   r.readAsDataURL(file);
 }
 
-function saveOrdonnance() {
+async function saveOrdonnance() {
   let medecin = document.getElementById('ordo-medecin').value.trim();
   let date    = document.getElementById('ordo-date').value;
   let notes   = document.getElementById('ordo-notes').value.trim();
@@ -1160,7 +1402,7 @@ function saveOrdonnance() {
   if (!date)    { showToast('Merci de saisir la date d\'expiration.', 'warning'); return; }
 
   try {
-    PatientService.addOrdonnance(_currentPatientId, {
+    await PatientService.addOrdonnance(_currentPatientId, {
       medecin: medecin, dateExpiration: date, photo: photo, notes: notes
     });
     _patientTab = 'ordonnances'; showToast('Ordonnance enregistrée', 'success'); Router.go('patient-detail');
@@ -1168,9 +1410,9 @@ function saveOrdonnance() {
 }
 
 // Supprimer une ordonnance
-function confirmDeleteOrdo(ordoId, medecin) {
+async function confirmDeleteOrdo(ordoId, medecin) {
   if (confirm('Supprimer l\'ordonnance de ' + medecin + ' ?')) {
-    PatientService.deleteOrdonnance(_currentPatientId, ordoId);
+    await PatientService.deleteOrdonnance(_currentPatientId, ordoId);
     Router.go('patient-detail');
   }
 }
@@ -1178,8 +1420,8 @@ function confirmDeleteOrdo(ordoId, medecin) {
 // ============================================================
 // HELPER — section ordonnances (utilisé dans renderPatientDetail)
 // ============================================================
-function _buildOrdonnancesSection(patientId) {
-  const ordos = PatientService.getOrdonnances(patientId);
+async function _buildOrdonnancesSection(patientId) {
+  const ordos = await PatientService.getOrdonnances(patientId);
 
   let ordosHTML = '';
   if (ordos.length === 0) {
@@ -1251,8 +1493,8 @@ function viewOrdoPhoto(ordoId) {
 // ============================================================
 // HELPER — section historique 7 jours (utilisé dans renderPatientDetail)
 // ============================================================
-function _buildHistorySection(patientId) {
-  const data = PatientService.getMedHistory7Days(patientId);
+async function _buildHistorySection(patientId) {
+  const data = await PatientService.getMedHistory7Days(patientId);
   if (!data || data.meds.length === 0) {
     return '<div>' +
       '<p class="section-title">Historique 7 jours</p>' +
@@ -1339,8 +1581,8 @@ function _buildHistorySection(patientId) {
 // ============================================================
 // ONGLET AUJOURD'HUI — médicaments du jour
 // ============================================================
-function _buildTodayTab(patientId) {
-  const meds    = PatientService.getTodayMeds(patientId);
+async function _buildTodayTab(patientId) {
+  const meds    = await PatientService.getTodayMeds(patientId);
   const MOMENTS = PatientService.MOMENTS;
 
   const grouped = {};
@@ -1349,7 +1591,8 @@ function _buildTodayTab(patientId) {
     grouped[m.medId].intakes.push(m);
   });
 
-  let medsHTML = Object.values(grouped).map(function(g) {
+  let medsHTML = '';
+  for (const g of Object.values(grouped)) {
     const prog = PatientService._dayProgress(g.duration);
     let durHTML = '';
     if (prog) {
@@ -1382,17 +1625,18 @@ function _buildTodayTab(patientId) {
     let dot = g.intakes.some(function(i){return i.status==='missed';})?'#A32D2D':
               g.intakes.every(function(i){return i.status==='taken';})?'#3B6D11':'#854F0B';
 
-    return '<div class="med-row">'+
+    const fullMed = await PatientService.getMedication(_currentPatientId, g.medId) || {};
+
+    medsHTML += '<div class="med-row">'+
       '<div class="med-row-top">'+photoHTML+
         '<div style="flex:1;min-width:0">'+
           '<div style="font-weight:500;font-size:16px">'+g.name+'</div>'+
           '<div class="text-muted">'+g.dose+'</div>'+durHTML+
-          _buildStockLine(PatientService.getMedication(_currentPatientId, g.medId)||{})+
+          _buildStockLine(fullMed)+
         '</div>'+
         '<div style="width:10px;height:10px;border-radius:50%;background:'+dot+';flex-shrink:0"></div>'+
       '</div>'+
       '<div style="display:flex;gap:8px;flex-wrap:wrap">'+timesHTML+'</div>'+
-      // Boutons edit/delete discrets
       '<div style="display:flex;justify-content:flex-end;gap:6px;padding-top:8px;border-top:0.5px solid var(--color-border-tertiary)">'+
         '<button onclick="editMedication(\''+g.medId+'\')" style="display:flex;align-items:center;gap:4px;background:none;border:1px solid var(--color-border-strong);border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;color:var(--color-text-muted);font-family:inherit">'+
           '<i class="ti ti-edit" style="font-size:13px" aria-hidden="true"></i> Modifier'+
@@ -1402,7 +1646,7 @@ function _buildTodayTab(patientId) {
         '</button>'+
       '</div>'+
     '</div>';
-  }).join('');
+  }
 
   if (!medsHTML) medsHTML = '<p class="text-muted" style="text-align:center;padding:20px 0">Aucun m&eacute;dicament configur&eacute;.</p>';
 
@@ -1547,9 +1791,9 @@ function _age(dateStr) {
 // ============================================================
 // RECHERCHE PATIENT — filtre en temps réel
 // ============================================================
-function filterPatients() {
+async function filterPatients() {
   let query    = document.getElementById('patient-search').value.toLowerCase().trim();
-  const patients = PatientService.getPatients();
+  const patients = await PatientService.getPatients();
   let list     = document.getElementById('patients-list');
   if (!list) return;
 
@@ -1574,8 +1818,9 @@ function filterPatients() {
     return;
   }
 
-  list.innerHTML = filtered.map(function(p) {
-    const s = PatientService.getPatientSummary(p.id);
+  let html = '';
+  for (const p of filtered) {
+    const s = await PatientService.getPatientSummary(p.id);
     const initials = p.prenom[0].toUpperCase()+p.nom[0].toUpperCase();
     const ava = p.photo
       ? '<img src="'+p.photo+'" style="width:52px;height:52px;border-radius:50%;object-fit:cover;flex-shrink:0" alt="'+p.prenom+'">'
@@ -1585,7 +1830,7 @@ function filterPatients() {
       : s.total>0   ? '<span class="badge badge-ok">✓ Tout pris</span>'
       : '<span class="badge" style="background:#F1EFE8;color:var(--color-text-muted)">Aucun méd.</span>';
     const age = p.dateNaissance ? _age(p.dateNaissance)+' ans · ' : '';
-    return '<div class="patient-card" onclick="openPatient(\''+p.id+'\')" role="button">'+
+    html += '<div class="patient-card" onclick="openPatient(\''+p.id+'\')" role="button">'+
       ava+
       '<div style="flex:1;min-width:0">'+
         '<div style="font-size:16px;font-weight:500;margin-bottom:3px">'+p.prenom+' '+p.nom+'</div>'+
@@ -1594,14 +1839,15 @@ function filterPatients() {
       '</div>'+
       '<i class="ti ti-chevron-right" style="font-size:20px;color:var(--color-text-muted);flex-shrink:0" aria-hidden="true"></i>'+
     '</div>';
-  }).join('');
+  }
+  list.innerHTML = html;
 }
 
 // ============================================================
 // ONGLET CONTACTS — par patient
 // ============================================================
-function _buildContactsTab(patientId) {
-  const contacts = PatientService.getContacts(patientId);
+async function _buildContactsTab(patientId) {
+  const contacts = await PatientService.getContacts(patientId);
   const NIVEAUX  = {
     always:  { label:'Toujours alerter',         color:'#A32D2D', bg:'#FCEBEB' },
     missed:  { label:'Si prise manquée',          color:'#854F0B', bg:'#FAEEDA' },
@@ -1672,7 +1918,7 @@ function hideAddContact() {
   if (form) form.style.display='none';
 }
 
-function saveContact() {
+async function saveContact() {
   let nom      = document.getElementById('c-nom').value.trim();
   let relation = document.getElementById('c-relation').value.trim();
   let tel      = document.getElementById('c-tel').value.trim();
@@ -1682,16 +1928,16 @@ function saveContact() {
   if (!tel) { showToast('Merci de saisir le téléphone.', 'warning'); return; }
 
   try {
-    PatientService.addContact(_currentPatientId, { nom:nom, relation:relation, telephone:tel, niveau:niveau });
+    await PatientService.addContact(_currentPatientId, { nom:nom, relation:relation, telephone:tel, niveau:niveau });
     showToast('Contact ajouté', 'success');
     _patientTab = 'contacts';
     renderPatientDetail();
   } catch(e) { showToast('Erreur : '+e.message, 'error'); }
 }
 
-function deleteContactConfirm(contactId, nom) {
+async function deleteContactConfirm(contactId, nom) {
   if (confirm('Supprimer le contact '+nom+' ?')) {
-    PatientService.deleteContact(_currentPatientId, contactId);
+    await PatientService.deleteContact(_currentPatientId, contactId);
     showToast('Contact supprimé', 'success');
     _patientTab = 'contacts';
     renderPatientDetail();
@@ -1722,8 +1968,8 @@ function _buildStockLine(med) {
 // ============================================================
 // STOCKS FAIBLES — section dashboard
 // ============================================================
-function _buildLowStocksSection() {
-  const low = PatientService.getLowStocks();
+async function _buildLowStocksSection() {
+  const low = await PatientService.getLowStocks();
   if (low.length === 0) return '';
 
   const rowsHTML = low.map(function(s) {
@@ -1750,9 +1996,9 @@ function _buildLowStocksSection() {
 // ============================================================
 // QR CODE SENIOR — génération depuis onglet Profil
 // ============================================================
-function generateSeniorQR(patientId) {
-  const p    = PatientService.getPatient(patientId);
-  const meds = PatientService.getMedications(patientId);
+async function generateSeniorQR(patientId) {
+  const p    = await PatientService.getPatient(patientId);
+  const meds = await PatientService.getMedications(patientId);
   if (!p) { showToast('Patient introuvable', 'error'); return; }
 
   // Construire le payload
@@ -1889,7 +2135,6 @@ function closeSeniorQR() {
 
 // ── EXPOSITION GLOBALE — requis pour les onclick inline dans le HTML dynamique ──
 window.openPatient          = openPatient;
-window.pinPress             = pinPress;
 window.handleTap            = handleTap;
 window.savePatient          = savePatient;
 window.saveEditPatient      = saveEditPatient;
